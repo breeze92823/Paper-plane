@@ -26,7 +26,7 @@ import {
   Vector2,
 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { MATERIAL_PBR, PALETTE as P } from './config.js'
+import { EGG_SHOP, MATERIAL_PBR, PALETTE as P, RARITIES } from './config.js'
 import {
   bullseyeTexture,
   clockTexture,
@@ -598,7 +598,7 @@ export function freeReward() {
 }
 
 // One hatchable egg: pedestal, spotted egg, pet-odds board behind it.
-export function eggStand({ color, spot, horn = false, best = false }) {
+export function eggStand({ name, color, spot, horn = false, best = false }) {
   const g = new Group()
   g.add(part(new CylinderGeometry(1.35, 1.5, 0.9, 32), solid(P.white), 0, 0.45, 0))
   g.add(part(new CylinderGeometry(1.42, 1.42, 0.25, 32), solid(P.eggBand), 0, 0.5, 0))
@@ -619,7 +619,8 @@ export function eggStand({ color, spot, horn = false, best = false }) {
   // Board on two posts, behind the egg.
   const dark = solid('#2a3350')
   for (const sx of [-1, 1]) g.add(part(new BoxGeometry(0.2, 4.2, 0.2), dark, sx * 1.6, 2.1, -1.7))
-  const face = new MeshStandardMaterial({ map: oddsBoardTexture(best ? '#e8b51f' : '#2c8cec'), ...MATERIAL_PBR.PROP })
+  const pets = (EGG_SHOP[name.toLowerCase()]?.pets ?? []).map((p) => ({ ...p, rarityBg: RARITIES[p.rarity].bg }))
+  const face = new MeshStandardMaterial({ map: oddsBoardTexture(best ? '#e8b51f' : '#2c8cec', pets), ...MATERIAL_PBR.PROP })
   const edge = solid(P.board)
   g.add(part(new BoxGeometry(3.4, 2.55, 0.18), [edge, edge, edge, edge, face, edge], 0, 3.1, -1.7))
   return g

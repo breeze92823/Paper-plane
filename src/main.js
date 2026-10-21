@@ -1,5 +1,5 @@
 import { Clock, Group, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer } from 'three'
-import { CAMERA, GRAPHICS_PRESETS, SPAWN, SPAWN_FACING, STREET_ZONES } from './config.js'
+import { CAMERA, GRAPHICS_PRESETS, SPAWN, SPAWN_FACING, STREET_ZONES, TUTORIAL } from './config.js'
 import * as bloxity from './bloxity.js'
 import { inputState, install as installInput } from './input.js'
 import { createTouchControls } from './touch.js'
@@ -14,15 +14,26 @@ import { applyProportions, attachEquippedAccessories } from './avatar/loader.js'
 import { disposeAnimator, makeAnimator } from './avatar/animator.js'
 import { HeldPlane } from './avatar/heldPlane.js'
 import * as store from './store.js'
-import { flights, getTrackedFlight, stepFlights, stepThrow, takePowerGains, takeTosses, takeZonesEntered, trackedReadout } from './throw.js'
+import { flights, getTrackedFlight, isInThrowArea, stepFlights, stepThrow, takePowerGains, takeTosses, takeZonesEntered, trackedReadout } from './throw.js'
 import { PLANES, stepPads, takePadMessages } from './pads.js'
+import { rewardWindow, stepEggs, takeEggMessages } from './eggs.js'
+import { createEggUi } from './eggUi.js'
+import { createItemsUi } from './itemsUi.js'
+import { PetFollowers } from './petFollowers.js'
 import { ThrownPlanes } from './thrownPlanes.js'
 import * as net from './net.js'
 import { RemotePlayers } from './remotePlayers.js'
+import { stepTutorial } from './tutorial.js'
+import { GuideArrows } from './guideArrows.js'
+import { initDaily, takeDailyMessages } from './daily.js'
+import { createDailyUi } from './dailyUi.js'
+import { initSfx, renderOffline, sfx } from './sfx.js'
 
 // --- Bloxity + player state -----------------------------------------------
 bloxity.init()
 net.init() // waits for auth itself; the game never waits on the server
+initDaily() // the daily-reward calendar: the server's for a signed-in player, else this browser's
+initSfx() // sound wakes on the first click or key (browsers allow nothing before)
 resetPlayer(SPAWN, SPAWN_FACING)
 syncYawToPlayer()
 
@@ -39,7 +50,13 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, preset.dpr))
 document.body.appendChild(renderer.domElement)
 installInput(bloxity.showMenu, renderer.domElement)
 createTouchControls()
-const hud = createHud()
+// The Pets tile opens the Pets menu (eggUi.js), Items the Items window (itemsUi.js); THROW
+// throws like a click or F (throw.js).
+const hud = createHud({ pets: () => eggUi.togglePets(), items: () => itemsUi.toggle(), throw: () => (inputState.actionPressed = true) })
+const eggUi = createEggUi(hud.root)
+const itemsUi = createItemsUi(hud.root) // the Items tile (or I): planes to equip, stored eggs and potions
+const dailyUi = createDailyUi(hud.root) // the calendar button (top right) and Daily Rewards window
+rewardWindow.open = () => dailyUi.toggle(true) // E at the Free Reward
 
 const scene = new Scene()
 scene.fog = createFog()
@@ -77,6 +94,26 @@ store.subscribe(tintHeldPlane)
 scene.add(heldPlane.object)
 const thrownPlanes = new ThrownPlanes()
 scene.add(thrownPlanes.object)
+// Equipped pets flying after the player.
+const petFollowers = new PetFollowers()
+scene.add(petFollowers.object)
+petFollowers.sync(store.game)
+store.subscribe((g) => petFollowers.sync(g))
+
+// Progress sounds: a level gained, a tutorial step done, a potion drunk. Only once the save is
+// known, so loading one (which jumps all three) stays quiet.
+let heard = { known: store.game.progressKnown, level: store.game.level, step: store.game.tutorialStep, boosts: { ...store.game.boosts } }
+store.subscribe((g) => {
+  if (heard.known) {
+    if (g.tutorialStep > heard.step) (g.tutorialStep >= TUTORIAL.doneStep ? sfx.questDone : sfx.questStep)()
+    else if (g.level > heard.level) sfx.levelUp()
+    if (g.boosts.power > heard.boosts.power || g.boosts.wins > heard.boosts.wins) sfx.potion()
+  }
+  heard = { known: g.progressKnown, level: g.level, step: g.tutorialStep, boosts: { ...g.boosts } }
+})
+// The tutorial's arrow trail to wherever its current step happens (tutorial.js).
+const guideArrows = new GuideArrows()
+scene.add(guideArrows.mesh)
 // Everyone else in the lobby (net.js); empty while playing solo.
 const remotePlayers = new RemotePlayers()
 scene.add(remotePlayers.object)
@@ -123,7 +160,7 @@ bloxity.onSetting((key, value) => {
 })
 
 // --- Street throw readout ------------------------------------------------------
-// "123 m", then "+N Wins" once it lands (and "NEW BEST!" past the best), under the objective. Ten updates a second, so the
+// "123 m", then "+N Wins" once it lands (and "NEW BEST!" past the best), under the tutorial banner. Ten updates a second, so the
 // HUD isn't rebuilt every frame.
 let readoutTimer = 0
 let readoutText = ''
@@ -131,9 +168,10 @@ function showFlight(dt) {
   // A zone the chased plane just flew into pops up at once; "NEW ZONE!" the first time ever.
   for (const { index, first } of takeZonesEntered()) {
     const zone = STREET_ZONES[index]
+    sfx.zone(first)
     hud.showPopup(`${zone.icon} ${zone.label}`, first ? 'NEW ZONE!' : `${zone.startD.toLocaleString('en-US')} m`, first ? 'good' : null)
   }
-  for (const { title, sub, tone } of takePadMessages()) hud.showPopup(title, sub, tone)
+  for (const { title, sub, tone } of [...takePadMessages(), ...takeEggMessages(), ...takeDailyMessages()]) hud.showPopup(title, sub, tone)
   for (const gain of takePowerGains()) hud.floatGain(`+${formatNumber(gain)} 💪`)
   readoutTimer -= dt
   if (readoutTimer > 0) return
@@ -155,6 +193,9 @@ renderer.setAnimationLoop(() => {
   const substeps = Math.ceil(dt / MAX_PHYSICS_STEP)
   for (let i = 0; i < substeps; i++) stepPlayer(dt / substeps)
   stepPads()
+  stepEggs()
+  const canThrow = isInThrowArea(player.position.x, player.position.z)
+  if (canThrow !== hud.state.canThrow) hud.set({ canThrow })
 
   playerGroup.position.set(player.position.x, player.position.y, player.position.z)
   playerGroup.rotation.y = player.facing // player.js turns the heading at a fixed rate
@@ -176,6 +217,7 @@ renderer.setAnimationLoop(() => {
   remotePlayers.update(dt)
   stepFlights(dt)
   thrownPlanes.update(dt)
+  petFollowers.update(dt, clock.elapsedTime, { x: player.position.x, y: player.position.y, z: player.position.z, facing: player.facing })
 
   map.update(dt)
   const tracked = getTrackedFlight()
@@ -186,6 +228,9 @@ renderer.setAnimationLoop(() => {
   lights.follow(focus.x, focus.z)
   sky.position.set(camera.position.x, 0, camera.position.z) // the dome is finite; keep the camera inside it
   showFlight(dt)
+  const tutorial = stepTutorial(dt)
+  hud.setQuest(tutorial)
+  guideArrows.update(dt, tutorial.target)
   renderer.render(scene, camera)
   bloxity.notifyFirstFrame()
 })
@@ -204,10 +249,14 @@ if (import.meta.env.DEV) {
     store,
     net,
     remotePlayers,
+    dailyUi,
     flights,
+    petFollowers,
     avatar: () => avatar,
     animator: () => animator,
     heldPlane,
+    sfx, // __game.sfx.buy(), or await __game.renderOffline('buy') for its levels
+    renderOffline,
     teleport: (x, y, z, facing = player.facing) => { resetPlayer({ x, y, z }, facing); syncYawToPlayer() },
     look: (dx, dy) => { inputState.look.dx += dx; inputState.look.dy += dy },
   }

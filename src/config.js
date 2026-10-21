@@ -24,6 +24,9 @@ export const NET = {
   statsDebounceMs: 1_000, // live stats (leaderboards)
   progressDebounceMs: 3_000, // durable save (Mongo), signed-in players only
   authWaitMs: 8_000, // wait this long for Bloxity auth so a signed-in player joins under their id
+  // Ceiling on waiting to learn whether a save exists (store.js progressKnown): covers a slow
+  // join or save lookup, but never stalls a new player's tutorial for long.
+  progressKnownMs: 15_000,
 }
 export const REMOTE_PLAYER = {
   lerpRate: 0.0008, // fraction of the gap to a remote player's last sample left after 1 s
@@ -132,7 +135,8 @@ export const MAP = {
   throwArea: { z: -31.5, label: 'THROW AREA', labelWidth: 19, minX: -14, maxX: 14, minZ: -35, maxZ: -28 },
   // The throwing field north of it: green from startZ, an asphalt road (x +- roadHalf)
   // from roadZ to endZ, white sidewalks and stone fences either side, the gate at gateZ.
-  field: { halfWidth: 12, sidewalk: 1.6, startZ: -35, roadZ: -76, roadHalf: 7, endZ: -112, gateZ: -104 },
+  // roadZ is the throw area's north edge, so the throw line is the road's start line.
+  field: { halfWidth: 12, sidewalk: 1.6, startZ: -35, roadZ: -35, roadHalf: 7, endZ: -112, gateZ: -104 },
   // Ground the hills keep clear of: plaza (with the plane hall), and the street corridor all
   // the way up (x +- STREET.corridorHalf, past the far end); street.js lines it from z = -112.
   open: [
@@ -186,18 +190,19 @@ export const MAP = {
   // Purchase pads in two rows across the hall, south to north; the back row stands before
   // display frames. Step on one to buy its plane for `wins` (or equip it, once owned): every
   // throw from a training pad earns its `power`, and it flies in its `plane` colour. wins: null
-  // = owned from the start.
+  // = owned from the start. `name` (and an optional `stripe` colour) is how the Items window
+  // (itemsUi.js) shows it.
   pads: [
-    { x: -34.75, z: 21, power: '+1', wins: null, plane: '#ffffff' },
-    { x: -34.75, z: 14.5, power: '+2', wins: '3', plane: '#9fd8ff' },
-    { x: -34.75, z: 8, power: '+5', wins: '25', plane: '#9cf08f' },
-    { x: -34.75, z: 1.5, power: '+11', wins: '110', plane: '#ffd36b' },
-    { x: -34.75, z: -5, power: '+21', wins: '280', plane: '#ff9ec7' },
-    { x: -44.5, z: 21, power: '+45', wins: '700', plane: '#c79bff', frame: true },
-    { x: -44.5, z: 14.5, power: '+98', wins: '2.1K', plane: '#ff8a5c', frame: true },
-    { x: -44.5, z: 8, power: '+210', wins: '5.6K', plane: '#5ce1e6', frame: true },
-    { x: -44.5, z: 1.5, power: '+490', wins: '14K', plane: '#ffe14d', frame: true },
-    { x: -44.5, z: -5, power: '+1.1K', wins: '35K', plane: '#ff5c7a', frame: true },
+    { x: -34.75, z: 21, name: 'Notebook', power: '+1', wins: null, plane: '#ffffff' },
+    { x: -34.75, z: 14.5, name: 'Colored', power: '+2', wins: '3', plane: '#9fd8ff', stripe: '#ff8fb5' },
+    { x: -34.75, z: 8, name: 'Mint', power: '+5', wins: '25', plane: '#9cf08f' },
+    { x: -34.75, z: 1.5, name: 'Sunny', power: '+11', wins: '110', plane: '#ffd36b' },
+    { x: -34.75, z: -5, name: 'Bubblegum', power: '+21', wins: '280', plane: '#ff9ec7' },
+    { x: -44.5, z: 21, name: 'Galaxy', power: '+45', wins: '700', plane: '#c79bff', frame: true },
+    { x: -44.5, z: 14.5, name: 'Blaze', power: '+98', wins: '2.1K', plane: '#ff8a5c', frame: true },
+    { x: -44.5, z: 8, name: 'Frost', power: '+210', wins: '5.6K', plane: '#5ce1e6', frame: true },
+    { x: -44.5, z: 1.5, name: 'Golden', power: '+490', wins: '14K', plane: '#ffe14d', frame: true },
+    { x: -44.5, z: -5, name: 'Ruby', power: '+1.1K', wins: '35K', plane: '#ff5c7a', frame: true },
   ],
   world2: { x: -13, z: -19 },
   demonEgg: { x: 13, z: -17 },
@@ -216,8 +221,8 @@ export const MAP = {
     { rim: '#e8a812', surface: 'gold', prize: 'gold', mult: 8, rebirths: 9, sign: [['9 Rebirths', '#ff9ad5'], ['💪 x8 Power', '#ffd84a']] },
     { rim: '#ff7a1a', surface: 'lava', prize: 'hex', mult: 12, rebirths: 12, sign: [['12 Rebirths', '#ff9ad5'], ['💪 x12 Power', '#ffd84a']] },
     { rim: '#e8283a', surface: 'crimson', prize: 'ruby', mult: 18, rebirths: 15, sign: [['15 Rebirths', '#ff9ad5'], ['💪 x18 Power', '#ffd84a']] },
-    { rim: '#ff8fe0', surface: 'rainbow', prize: 'rainbow', mult: 30, gems: 45, sign: [['VERY OP!', '#ff5ce1'], ['⬢ 45', '#4be36a'], ['💪 x30 Power', '#ffd84a']] },
-    { rim: '#33e0ff', surface: 'neon', prize: 'swirl', mult: 100, gems: 279, sign: [['BEST OVERALL!', '#ffe23d'], ['⬢ 279', '#4be36a'], ['💪 x100 Power', '#ffd84a']] },
+    { rim: '#ff8fe0', surface: 'rainbow', prize: 'rainbow', mult: 30, rebirths: 20, sign: [['VERY OP!', '#ff5ce1'], ['20 Rebirths', '#ff9ad5'], ['💪 x30 Power', '#ffd84a']] },
+    { rim: '#33e0ff', surface: 'neon', prize: 'swirl', mult: 100, rebirths: 30, sign: [['BEST OVERALL!', '#ffe23d'], ['30 Rebirths', '#ff9ad5'], ['💪 x100 Power', '#ffd84a']] },
   ],
   chevrons: { x: 0, z: -7, count: 5, spacing: 2.1 },
   // Floor arrows from the spawn to the plane pads: quadratic curve start, control, end.
@@ -229,9 +234,9 @@ export const MAP = {
   eggs: [
     { x: 8.4, name: 'Basic', cost: '🏆 25 Wins', color: '#f6f3ec', spot: '#d9d4c8' },
     { x: 4.2, name: 'Meadow', cost: '🏆 50 Wins', color: '#7fe0b8', spot: '#4fc48e' },
-    { x: 0, name: 'Sphinx', cost: '⬢ 395', color: '#f5c542', spot: '#2f6fd8', best: true },
+    { x: 0, name: 'Sphinx', cost: '🏆 50K Wins', color: '#f5c542', spot: '#2f6fd8', best: true },
     { x: -4.2, name: 'Sunset', cost: '🏆 4K Wins', color: '#f7b49a', spot: '#f08a6a' },
-    { x: -8.4, name: 'Unicorn', cost: '⬢ 12', color: '#fbf7ff', spot: '#f3c6ff', horn: true },
+    { x: -8.4, name: 'Unicorn', cost: '🏆 500 Wins', color: '#fbf7ff', spot: '#f3c6ff', horn: true },
   ],
   // Waterfalls cascading down the cliff behind the eggs: one sheet per terrace face
   // [z, y bottom, y top], front to back, with a stream across each terrace top between.
@@ -241,16 +246,35 @@ export const MAP = {
   ],
 }
 
+// --- Tutorial (tutorial.js) --------------------------------------------------------
+// The onboarding quest, after Stone-Skipping's: 0 get `power` Power (training pad), 1 get
+// `wins` Wins (Throw Area), 2 equip a new plane (Plane Hall), 3 reach level `level`, 4 rebirth,
+// 5 done. Paper-plane-backend's constants.ts mirrors these numbers for old saves.
+export const TUTORIAL = {
+  power: 30,
+  wins: 3, // the +2 plane's price (MAP.pads[1])
+  level: 20, // the first rebirth's level cap
+  doneStep: 5,
+  completeLingerMs: 10_000, // the COMPLETE banner stays this long, then pops out
+  // Where the guide arrows lead at steps 0..3: the FREE training pad, the Throw Area, the
+  // +2 plane's pad, the FREE pad again. None for rebirth and done.
+  targets: [
+    { x: MAP.trainingRow.x0 + 2, z: MAP.trainingRow.z0 },
+    { x: 0, z: MAP.throwArea.z },
+    { x: MAP.pads[1].x, z: MAP.pads[1].z },
+    { x: MAP.trainingRow.x0 + 2, z: MAP.trainingRow.z0 },
+  ],
+}
+
 // --- HUD (hud.js) -------------------------------------------------------------
 // Starting values for what the HUD shows beyond the game's progress (Power, Wins,
-// Rebirths, level and Auto Throw come from store.js), and the gem price on each paid button.
+// Rebirths, level and Auto Throw come from store.js), and the Wins price on each paid button.
 export const HUD = {
   start: {
-    friendBoost: 0, // %
-    objective: 'Buy your first paper airplane',
-    alerts: { store: true, rewards: true },
+    alerts: {},
   },
-  prices: { autoThrow: 19, x2Power: 2, x2Wins: 19, power100K: 11, power1M: 25, power10M: 49 },
+  // Each bought once, then switched on/off from its button (store.js buyAutoThrow / buyX2).
+  prices: { autoThrow: 5000, x2Power: 100_000, x2Wins: 500_000 },
   // The layout is drawn at this reference size and scaled to the window.
   refWidth: 1000, // narrowest width the bottom row fits at scale 1
   refHeight: 990,
@@ -579,4 +603,130 @@ export function coerceSetting(key, raw) {
   if (spec.type === 'enum') return spec.values.includes(value) ? value : spec.def
   const n = Number(value)
   return clamp(Number.isFinite(n) ? n : Number(spec.def), spec.min, spec.max)
+}
+
+// --- Eggs and pets (eggs.js, hatch.js, pets.js, eggUi.js, petFollowers.js) ------------
+// After Chop-trees-for-treasure's data/eggs.js. Keyed by egg id: the lower-cased MAP.eggs
+// name, plus 'demon' for the Demon Egg on the north plaza. Each egg hatches one of its
+// six pets at `chance` % (the odds boards show the same numbers); `power` is what the
+// pet adds to the Power multiplier while equipped (pets.js: 1 + the sum over equipped).
+// `currency` 'gems' eggs can't be opened until gems are sold. Pet names are unique within
+// an egg; saves store { egg, name }, and Paper-plane-backend's constants.ts EGG_PETS must
+// list the same names or it drops them.
+export const EGG_SHOP = {
+  basic: {
+    name: 'Basic Egg', cost: 25, currency: 'wins',
+    pets: [
+      { name: 'Paper Crane', emoji: '🕊️', color: '#f4f1e8', chance: 40, rarity: 'common', power: 0.1 },
+      { name: 'Pigeon', emoji: '🐦', color: '#9aa7b8', chance: 30, rarity: 'uncommon', power: 0.15 },
+      { name: 'Origami Frog', emoji: '🐸', color: '#6fd35a', chance: 15, rarity: 'rare', power: 0.25 },
+      { name: 'Kite Cat', emoji: '🐱', color: '#ffb84d', chance: 10, rarity: 'epic', power: 0.4 },
+      { name: 'Balloon Pup', emoji: '🐶', color: '#ff7fb0', chance: 4, rarity: 'legendary', power: 0.8 },
+      { name: 'Golden Crane', emoji: '🦢', color: '#ffd23f', chance: 1, rarity: 'mythic', power: 2 },
+    ],
+  },
+  meadow: {
+    name: 'Meadow Egg', cost: 50, currency: 'wins',
+    pets: [
+      { name: 'Ladybug', emoji: '🐞', color: '#e8323a', chance: 40, rarity: 'common', power: 0.2 },
+      { name: 'Bunny', emoji: '🐰', color: '#f2ece4', chance: 30, rarity: 'uncommon', power: 0.3 },
+      { name: 'Butterfly', emoji: '🦋', color: '#4fa8ff', chance: 15, rarity: 'rare', power: 0.5 },
+      { name: 'Bumblebee', emoji: '🐝', color: '#ffd23a', chance: 10, rarity: 'epic', power: 0.8 },
+      { name: 'Hummingbird', emoji: '🐤', color: '#3fd6a0', chance: 4, rarity: 'legendary', power: 1.5 },
+      { name: 'Fairy Fox', emoji: '🦊', color: '#ff8a3d', chance: 1, rarity: 'mythic', power: 4 },
+    ],
+  },
+  sunset: {
+    name: 'Sunset Egg', cost: 4000, currency: 'wins',
+    pets: [
+      { name: 'Sunset Duck', emoji: '🦆', color: '#f7b49a', chance: 40, rarity: 'common', power: 1 },
+      { name: 'Flamingo', emoji: '🦩', color: '#ff8fbf', chance: 30, rarity: 'uncommon', power: 1.5 },
+      { name: 'Parrot', emoji: '🦜', color: '#3fcf5a', chance: 15, rarity: 'rare', power: 2.5 },
+      { name: 'Phoenix Chick', emoji: '🐣', color: '#ffb02e', chance: 10, rarity: 'epic', power: 4 },
+      { name: 'Sun Hawk', emoji: '🦅', color: '#c8742f', chance: 4, rarity: 'legendary', power: 8 },
+      { name: 'Sunset Dragon', emoji: '🐉', color: '#ff5c3a', chance: 1, rarity: 'mythic', power: 20 },
+    ],
+  },
+  unicorn: {
+    name: 'Unicorn Egg', cost: 500, currency: 'wins',
+    pets: [
+      { name: 'Cloud Pony', emoji: '🐴', color: '#eef4ff', chance: 40, rarity: 'common', power: 0.5 },
+      { name: 'Moon Bat', emoji: '🦇', color: '#7a6ad8', chance: 30, rarity: 'uncommon', power: 0.8 },
+      { name: 'Rainbow Owl', emoji: '🦉', color: '#c9a0ff', chance: 15, rarity: 'rare', power: 1.2 },
+      { name: 'Star Cat', emoji: '🐈', color: '#ffe08a', chance: 10, rarity: 'epic', power: 2 },
+      { name: 'Unicorn', emoji: '🦄', color: '#fbe8ff', chance: 4, rarity: 'legendary', power: 5 },
+      { name: 'Galaxy Unicorn', emoji: '🦄', color: '#b06cff', chance: 1, rarity: 'mythic', power: 12 },
+    ],
+  },
+  sphinx: {
+    name: 'Sphinx Egg', cost: 50_000, currency: 'wins',
+    pets: [
+      { name: 'Camel', emoji: '🐫', color: '#d9a865', chance: 40, rarity: 'common', power: 3 },
+      { name: 'Scarab', emoji: '🪲', color: '#2f6fd8', chance: 30, rarity: 'uncommon', power: 5 },
+      { name: 'Falcon', emoji: '🦅', color: '#a87a4a', chance: 15, rarity: 'rare', power: 8 },
+      { name: 'Jackal', emoji: '🐺', color: '#5a4a3a', chance: 10, rarity: 'epic', power: 12 },
+      { name: 'Sphinx', emoji: '🦁', color: '#f5c542', chance: 4, rarity: 'legendary', power: 30 },
+      { name: 'Golden Sphinx', emoji: '🦁', color: '#ffd700', chance: 1, rarity: 'mythic', power: 100 },
+    ],
+  },
+  // Not on the egg row: the Demon Egg stand on the north plaza sells this one pet outright.
+  demon: {
+    name: 'Demon Egg', cost: 1_000_000, currency: 'wins',
+    pets: [{ name: 'Demon Dragon', emoji: '🐲', color: '#e8283a', chance: 100, rarity: 'mythic', power: 250 }],
+  },
+  // Not an egg anyone opens: pets only the daily rewards hand out (DAILY, daily.js).
+  daily: {
+    name: 'Daily Rewards', cost: 0, currency: 'reward',
+    pets: [{ name: 'Dragon', emoji: '🐉', color: '#3fcf5a', chance: 100, rarity: 'epic', power: 2 }],
+  },
+}
+
+// --- Daily rewards (daily.js, dailyUi.js) -----------------------------------------------
+// A 7-day calendar: Day N unlocks N - 1 days after the cycle starts, stays claimable until
+// claimed (in any order), and claiming the last starts the next cycle a week after this one
+// began. A signed-in player's calendar lives on the server (Paper-plane-backend
+// src/daily.ts, which decides each claim and the reward); a guest's in this browser.
+// `reward` must match the server's DAILY_REWARDS; the rest is how the window draws it.
+const MINUTE = 60_000
+export const DAILY = {
+  dayMs: Number(import.meta.env.VITE_DAILY_DAY_MS) > 0 ? Number(import.meta.env.VITE_DAILY_DAY_MS) : 86_400_000,
+  storageKey: 'paperPlane.daily', // a guest's calendar (localStorage)
+  days: [
+    { label: 'x2 Wins', icon: 'winsPotion', amount: '5m', reward: { kind: 'boost', stat: 'wins', ms: 5 * MINUTE } },
+    { label: 'Dragon', icon: 'pet', amount: 'x1', reward: { kind: 'pet', egg: 'daily', name: 'Dragon' } },
+    { label: 'x2 Power', icon: 'powerPotion', amount: '5m', reward: { kind: 'boost', stat: 'power', ms: 5 * MINUTE } },
+    { label: 'Unicorn Egg', icon: 'egg', amount: 'x1', reward: { kind: 'egg', egg: 'unicorn' } },
+    { label: 'x2 Power', icon: 'powerPotion', amount: '5m', reward: { kind: 'boost', stat: 'power', ms: 5 * MINUTE } },
+    { label: 'x2 Wins', icon: 'winsPotion', amount: '5m', reward: { kind: 'boost', stat: 'wins', ms: 5 * MINUTE } },
+    { label: 'Demon Egg', icon: 'egg', amount: 'x1', reward: { kind: 'egg', egg: 'demon' } },
+  ],
+}
+
+export const RARITIES = {
+  common: { label: 'Common', bg: '#9aa0ad', text: '#ffffff' },
+  uncommon: { label: 'Uncommon', bg: '#46cf3a', text: '#c6ff9a' },
+  rare: { label: 'Rare', bg: '#3a7ef0', text: '#9ad8ff' },
+  epic: { label: 'Epic', bg: '#9a3fe0', text: '#e6b0ff' },
+  legendary: { label: 'Legendary', bg: '#ff9a1f', text: '#fff3a0' },
+  mythic: { label: 'Mythic', bg: '#ff3fa8', text: '#ffd1ec' },
+}
+export const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic']
+
+export const EGGS = {
+  range: { open: 4.5, close: 6.5 }, // m from an egg: the E prompt shows inside `open`; an open window shuts past `close`
+  openMany: 3, // pets per Open 3
+  inventoryMax: 60,
+  slots: 1, // pets equipped at the start (more slots can come from upgrades later)
+  hatchMs: { shake: 1700, reveal: 1900, autoSpeed: 0.55 }, // the hatch animation; Auto plays it faster
+  autoDelayMs: 350, // between Auto's hatches
+}
+
+// Equipped pets flying after the player (petFollowers.js).
+export const PET_FOLLOW = {
+  radius: 2.1, // m behind the player
+  spread: 0.62, // rad between neighbours in the arc
+  height: 1.6, // m above the feet
+  bob: 0.18, // m
+  followHz: 5, // how quickly they ease after the player
+  scale: 0.55,
 }

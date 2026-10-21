@@ -10,6 +10,7 @@ import { formatNumber } from './hud.js'
 import { player } from './player.js'
 import { buyPlane, equipPlane, game } from './store.js'
 import { parseAmount } from './progression.js'
+import { sfx } from './sfx.js'
 
 const tr = MAP.trainingRow
 const TRAIN_TOP = 0.6 // a training pad's rim top (map.js: PAD_BASE + PAD_H)
@@ -49,6 +50,7 @@ export function stepPads() {
     TRAINING.find((t) => p.x >= tr.x0 && p.x <= t.prize.x - 1.6 && Math.abs(p.z - t.z) <= tr.w / 2 && p.y >= TRAIN_TOP - 0.05 && p.y < TRAIN_TOP + 0.3) ?? null
   const t = padState.training
   if (t && t !== was && !isTrainingUnlocked(t)) {
+    sfx.denied()
     messages.push(
       t.gems
         ? { title: `🔒 ⬢ ${t.gems} Gamepass`, sub: `x${t.mult} Power: coming soon`, tone: 'bad' }
@@ -70,10 +72,13 @@ function onHallPad(i) {
   if (game.equippedPlane === i) return
   if (game.ownedPlanes.includes(i)) {
     equipPlane(i)
+    sfx.equip()
     messages.push({ title: '✈️ Equipped!', sub: perThrow, tone: 'good' })
   } else if (buyPlane(i, pl.cost)) {
+    sfx.buy()
     messages.push({ title: '✈️ Bought!', sub: perThrow, tone: 'good' })
   } else {
+    sfx.denied()
     messages.push({ title: `🏆 ${pl.wins} Wins`, sub: `needed: you have ${formatNumber(game.wins)}`, tone: 'bad' })
   }
 }

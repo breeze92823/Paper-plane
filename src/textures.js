@@ -480,10 +480,10 @@ export function eggTexture(base, spot, seed = 5) {
   })
 }
 
-// Pet-odds board: header bar and a 3x2 grid of pet slots with chances.
-export function oddsBoardTexture(accent) {
-  return cached(`odds${accent}`, () => {
-    const rand = mulberry32(accent.length * 97 + parseInt(accent.slice(1), 16) % 1000)
+// Pet-odds board: header bar and a 3x2 grid of the egg's pets (`pets`: { emoji, chance,
+// rarityBg } from EGG_SHOP), each on its rarity colour with its chance.
+export function oddsBoardTexture(accent, pets) {
+  return cached(`odds${accent}${pets.map((p) => p.emoji).join('')}`, () => {
     const W = 256
     const H = 192
     const c = canvas(W, H)
@@ -496,21 +496,17 @@ export function oddsBoardTexture(accent) {
     g.font = `700 16px ${SIGN_FONT}`
     g.textAlign = 'center'
     g.fillText('Total Chance', W / 2, 19)
-    const pets = ['#ff8a5c', '#7fe0b8', '#ffd84a', '#c79bff', '#5ce1e6', '#ff5c7a']
-    const odds = ['40%', '30%', '15%', '10%', '4%', '1%']
-    for (let i = 0; i < 6; i++) {
+    pets.slice(0, 6).forEach((pet, i) => {
       const x = 12 + (i % 3) * 80
       const y = 36 + Math.floor(i / 3) * 76
-      g.fillStyle = '#2b3b66'
+      g.fillStyle = pet.rarityBg
       g.fillRect(x, y, 72, 68)
-      g.fillStyle = pets[(i + Math.floor(rand() * 6)) % 6]
-      g.beginPath()
-      g.arc(x + 36, y + 28, 18, 0, Math.PI * 2)
-      g.fill()
+      g.font = `30px ${SIGN_FONT}`
+      g.fillText(pet.emoji, x + 36, y + 38)
       g.fillStyle = '#ffffff'
       g.font = `700 14px ${SIGN_FONT}`
-      g.fillText(odds[i], x + 36, y + 62)
-    }
+      g.fillText(`${pet.chance}%`, x + 36, y + 62)
+    })
     return toTexture(c, { repeat: false })
   })
 }

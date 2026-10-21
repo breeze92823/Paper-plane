@@ -4,7 +4,7 @@
 // the waterfall cliff (south), the rebirth training pads to the east, and the hills
 // around it all. Layout lives in config.js (MAP); builders in props.js.
 import { Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, RingGeometry } from 'three'
-import { addCollider } from './colliders.js'
+import { addCollider, addPusher } from './colliders.js'
 import { MAP, MATERIAL_PBR, PALETTE as P, SPAWN, STREET } from './config.js'
 import { goldTexture, lavaTexture, neonTexture, rainbowTexture, waterfallTexture } from './textures.js'
 import {
@@ -325,6 +325,10 @@ export function createMap() {
   road.castShadow = false
   root.add(road)
   const dash = new MeshBasicMaterial({ color: '#ffffff', polygonOffset: true, polygonOffsetFactor: -2 })
+  // The start line painted across the road where it meets the throw area.
+  const startLine = new Mesh(new PlaneGeometry(fd.roadHalf * 2, 0.6).rotateX(-Math.PI / 2), dash)
+  startLine.position.set(0, Y_DECAL, fd.roadZ - 0.3)
+  root.add(startLine)
   for (let z = fd.roadZ - 2; z > fd.endZ; z -= 6) {
     const d = new Mesh(new PlaneGeometry(0.35, 3).rotateX(-Math.PI / 2), dash)
     d.position.set(0, Y_DECAL, z - 1.5)
@@ -358,6 +362,18 @@ export function createMap() {
     root.add(place(stoneFence(len), sx * (pillarEdge + len / 2), 0, fd.gateZ))
   }
   addCollider(0, fd.gateZ, STREET.corridorHalf * 2 + 8, 0.6, 30)
+
+  // Players throw from the throw area and never set foot on the field or road: everything
+  // between the fences north of the start line keeps them out, however high they jump. A
+  // pusher rather than a collider, so planes still fly up it and the camera sees over it.
+  const keepOutX = fenceX + 0.35
+  addPusher((p, radius) => {
+    if (Math.abs(p.x) >= keepOutX + radius || p.z >= fd.startZ + radius || p.z <= fd.endZ - radius) return
+    const south = fd.startZ + radius - p.z
+    const side = keepOutX + radius - Math.abs(p.x)
+    if (south <= side) p.z += south
+    else p.x += Math.sign(p.x || 1) * side
+  })
 
   // --- Beside the field: school, court, benches, houses ----------------------------
   const sc = MAP.school

@@ -21,6 +21,7 @@ import { ANIM, GROUND_Y, HELD_PLANE, MAP, PHYSICS, STREET, THROW } from './confi
 import { addPower, addWins, game, reachZone, recordDistance } from './store.js'
 import { isTrainingUnlocked, padState, PLANES, TRAINING } from './pads.js'
 import { clamp, streetReach, streetWinsForDistance, zoneIndexAt } from './progression.js'
+import { sfx } from './sfx.js'
 
 // { position, velocity, quaternion, color, sinkVy, age, stalled, landed, lie, fade, done, run, shot, wins, newBest }
 // `run` is set for a street throw and `shot` for a training-pad throw (see release); `wins`
@@ -42,6 +43,9 @@ let inHand = true
 let reloadTimer = 0
 let pending = null // { t, dir, street, pad }: toss playing, plane not yet released
 let controlTimer = 0
+// Seconds between the Power a non-pad throw pays: throws inside the window still fly but earn nothing.
+const THROW_POWER_COOLDOWN = 1
+let throwPowerCooldown = 0
 let queued = 0
 // The street throw the camera and shadows follow, set on release and cleared
 // STREET.trackHold after it lands. Only one at a time, and no new plane comes into the
@@ -80,12 +84,14 @@ const _aim = new Object3D()
 export function stepThrow(dt, animator, heldPlane) {
   if (inputState.actionPressed) queued = PRESS_BUFFER
   inputState.actionPressed = false
+  if (throwPowerCooldown > 0) throwPowerCooldown -= dt
 
   if (!inHand && !pending && !tracked) {
     reloadTimer -= dt
     if (reloadTimer <= 0) {
       inHand = true
       heldPlane.setInHand(true, THROW.popTime)
+      sfx.reload()
     }
   }
 
@@ -93,7 +99,7 @@ export function stepThrow(dt, animator, heldPlane) {
   const street = isInThrowArea(p.x, p.z)
   const pad = padState.training && isTrainingUnlocked(padState.training) ? padState.training : null
   const still = inputState.move.x === 0 && inputState.move.z === 0
-  const want = queued > 0 || inputState.action || (game.autoThrow && street) || (pad && still)
+  const want = queued > 0 || inputState.action || (game.autoThrow && game.autoThrowOwned && street) || (pad && still)
   queued -= dt
   if (want && inHand && !pending && controlTimer <= 0 && player.grounded && animator) {
     const yaw = getYaw()
@@ -108,6 +114,7 @@ export function stepThrow(dt, animator, heldPlane) {
     controlTimer = CONTROL_TIME
     queued = 0
     animator.toss()
+    sfx.throwSwing()
     // For net.js to relay, so others see this toss (remotePlayers.js replays it).
     tosses.push(pad ? { kind: 'pad', pad: pad.index } : street ? { kind: 'street', range: streetRange(game.power) } : { kind: 'free', dx: dir.x, dz: dir.z })
   }
@@ -137,6 +144,7 @@ const streetRange = (power) => streetReach(power) * STREET.length
 function release({ dir, street, pad }, heldPlane) {
   heldPlane.worldPose(_pos, _quat)
   heldPlane.setInHand(false)
+  sfx.throwRelease()
   inHand = false
   reloadTimer = THROW.reloadTime
   const flight = launch(_pos, _quat, dir, {
@@ -146,6 +154,13 @@ function release({ dir, street, pad }, heldPlane) {
     power: pad ? PLANES[game.equippedPlane].perThrow * pad.mult : 0,
   })
   if (flight.run && !tracked) tracked = flight
+  // Pad throws pay when they hit the prize; every other throw (the Throw Area's included) pays now.
+  if (!pad && throwPowerCooldown <= 0) {
+    throwPowerCooldown = THROW_POWER_COOLDOWN
+    const before = game.power
+    addPower(PLANES[game.equippedPlane].perThrow)
+    if (game.power > before) gains.push(game.power - before)
+  }
 }
 
 // Another player's toss (remotePlayers.js), released from their hand at `position`,
@@ -237,6 +252,7 @@ function stepShot(f, dt) {
   if (t < 1) return
   f.shot = null
   if (!f.remote) {
+    sfx.padHit()
     const before = game.power
     addPower(s.power)
     if (game.power > before) gains.push(game.power - before)
@@ -279,8 +295,17 @@ function stepRun(f, dt) {
     f.wins = streetWinsForDistance(r.d)
     if (f.wins > 0) addWins(f.wins)
     f.newBest = recordDistance(r.d)
+    // The camera is on it, so it sounds close: the touchdown, the Wins, a new best.
+    sfx.land(1)
+    if (f.newBest) sfx.newBest()
+    else if (f.wins > 0) sfx.coins(clamp(Math.ceil(Math.log10(f.wins + 1)) + 1, 2, 5))
   }
 }
+
+// How loud one of our planes sounds from where the player stands: full within a few
+// metres, fading out by NEAR_FADE.
+const NEAR_FADE = 30
+const nearby = (p) => clamp(1 - Math.hypot(p.x - player.position.x, p.z - player.position.z) / NEAR_FADE, 0, 1) ** 1.5
 
 function land(f) {
   f.velocity.y = 0
@@ -341,12 +366,14 @@ export function stepFlights(dt) {
         v.z *= -0.15
         if (v.y > 0) v.y = 0
         f.stalled = true
+        if (!f.remote) sfx.bump(nearby(p))
       }
 
       const floor = floorUnder(p.x, p.z, p.y)
       if (p.y - REST_HEIGHT <= floor || f.age > THROW.maxFlightTime) {
         p.y = Math.max(p.y, floor + REST_HEIGHT)
         land(f)
+        if (!f.remote) sfx.land(nearby(p) * 0.7)
         continue
       }
       if (p.y < PHYSICS.killY) {

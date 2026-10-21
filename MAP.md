@@ -41,10 +41,10 @@ North is up. The map isn't to scale; coordinates are in the landmark index.
                              ┃ ▒▒ Neighbourhood ▒▒┃  z = −104  gate
               beige house    ┃      road ¦ (grey) ┃     yellow house
               white house    ┃           ¦        ┃     pink house
-              blue house     ┃▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓┃     teal house        z = −76  road starts
-              SCHOOL ⏰      ┃                    ┃  ⛹ basketball court
-              ✎ pencil       ┃   THROWING FIELD   ┃     benches
-              grass bank ▄▄▄▄┃   (green, 24 m)    ┃▄▄▄▄ grass bank
+              blue house     ┃           ¦        ┃     teal house
+              SCHOOL ⏰      ┃           ¦        ┃  ⛹ basketball court
+              ✎ pencil       ┃           ¦        ┃     benches
+              grass bank ▄▄▄▄┃▁▁▁▁▁▁ start line ▁▁┃▄▄▄▄ grass bank       z = −35  road starts
   ──────────────────────▄▄▄▄═╩═══ THROW AREA ═════╩═▄▄▄▄──────────────────── z = −35 … −28
   │                     World 2 ◎        ▼▼▼▼▼        ◎ Demon Egg  ┃▭ FREE        │
   │                     (−13,−19)      chevrons       (13,−17)     ┃▭ 1 Rebirth   │
@@ -74,9 +74,9 @@ North is up. The map isn't to scale; coordinates are in the landmark index.
 | White floor arrows | Plaza | (8, 13) → (−19, 16) | 9 arrows on a curve, pointing west to the Plane Hall |
 | World 2 portal | North plaza | (−13, −19) | Ice-crystal ring with a spinning swirl. Sign: *World 2 / Needs 2.5M Power* |
 | Demon Egg | North plaza | (13, −17) | Lava egg with flames, on a dark pedestal on a light-blue pad |
-| **Throw Area** | North | x ±14, z −35 → −28 | Walkway strip across the field mouth, *THROW AREA* painted on the floor. Players throw from here |
+| **Throw Area** | North | x ±14, z −35 → −28 | Walkway strip across the field mouth, *THROW AREA* painted on the floor. Players throw from here and can't walk or jump past its north edge onto the field or road |
 | Throwing field | North | x ±12, z −35 → −112 | 24 m wide green studded field between sidewalks and stone fences |
-| Road | North | x ±7, z −76 → −112 | Asphalt with a dashed white centre line |
+| Road | North | x ±7, z −35 → −112 | Asphalt with a dashed white centre line. Starts at the Throw Area's north edge, where a white start line is painted across it |
 | Neighbourhood gate | North | (0, −104) | Striped blue/white pillars, see-through blue panel, *🏠 Neighbourhood* |
 | School | North-west | (−26, −50) | Red brick, clock tower, *SCHOOL* entrance facing the field |
 | Giant pencil | North-west | (−15.8, −42.6) | Yellow pencil standing on its point by the school |
@@ -123,7 +123,7 @@ Players stand here and throw their planes north up the field.
 | Feature | Details |
 |---|---|
 | Field | 24 m wide (x ±12) bright-green studded strip from z −35 to −112 |
-| Road | Asphalt, x ±7, from z −76 to −112, with a dashed white centre line. The green shoulders continue either side |
+| Road | Asphalt, x ±7, from z −35 (the Throw Area's edge, marked by a white start line) to −112, with a dashed white centre line. The green shoulders continue either side |
 | Sidewalks | White studded, 1.6 m wide (x ±12 → ±13.6), 0.15 m high, along the whole field |
 | Stone fences | Dark-grey posts every ~3 m with two white rails, at x ±13.95, the full length of the field |
 | Lamp posts | Yellow lamps on the sidewalks (x ±12.8), every 12 m from z −38 |
@@ -237,8 +237,8 @@ Nine short raised pads side by side on a light-blue studded base. Players stand 
 | 5 | 7 | 9 Rebirths | x8 Power | polished gold | Gold bullseye |
 | 6 | 13 | 12 Rebirths | x12 Power | orange lava | Orange hexagon in a spiked frame |
 | 7 | 19 | 15 Rebirths | x18 Power | crimson lava | Ruby in a spiked frame |
-| 8 | 25 | **VERY OP!** · ⬢ 45 | x30 Power | rainbow | Rotating rainbow ring |
-| 9 | 31 | **BEST OVERALL!** · ⬢ 279 | x100 Power | dark navy, cyan neon rim, lightning | Dark ring with a spinning blue swirl |
+| 8 | 25 | **VERY OP!** · 20 Rebirths | x30 Power | rainbow | Rotating rainbow ring |
+| 9 | 31 | **BEST OVERALL!** · 30 Rebirths | x100 Power | dark navy, cyan neon rim, lightning | Dark ring with a spinning blue swirl |
 
 ⬢ is the premium currency (gamepass tiers).
 
@@ -260,9 +260,11 @@ Nine short raised pads side by side on a light-blue studded base. Players stand 
 |---|---|---|---|
 | Basic | 8.4 | 🏆 25 Wins | Off-white |
 | Meadow | 4.2 | 🏆 50 Wins | Mint green |
-| Sphinx | 0 | ⬢ 395 | Gold with blue spots, glossy. Sign: *BEST IN GAME · 1000% BETTER*, gold board |
+| Sphinx | 0 | 🏆 50K Wins | Gold with blue spots, glossy. Sign: *BEST IN GAME · 1000% BETTER*, gold board |
 | Sunset | −4.2 | 🏆 4K Wins | Peach |
-| Unicorn | −8.4 | ⬢ 12 | White with pink spots, gold horn, pink mane |
+| Unicorn | −8.4 | 🏆 500 Wins | White with pink spots, gold horn, pink mane |
+
+**Hatching:** within 4.5 m of an egg (the Demon Egg too), *E Open …* shows; E or a click opens its window with the six pets, their odds and power, and **Open 1 (E) / Open 3 (R) / Auto (T)**. Walking past 6.5 m closes it. The odds boards behind the eggs show the same pets. Each pet adds its power to the Power multiplier while equipped (1 slot to start), and equipped pets fly after the player. The Pets tile opens the Pets menu (equip, Equip Best, delete). Gem eggs (Sphinx, Unicorn) can't be opened until gems are sold; the Demon Egg sells its one pet for 1M Wins. Data: `EGG_SHOP`, `EGGS`, `PET_FOLLOW` in config.js; code in `eggs.js`, `hatch.js`, `pets.js`, `eggUi.js`, `petFollowers.js`. Pets save with the rest of the progress; Paper-plane-backend's `constants.ts` `EGG_PETS` must list every pet name.
 
 ### Surrounding terrain
 
@@ -321,4 +323,4 @@ Nine short raised pads side by side on a light-blue studded base. Players stand 
 | `src/textures.js` | Canvas-painted textures: studs, facades, lava, gold, rainbow, neon, swirl, egg shells, odds boards, water, court, clock, signs |
 | `src/world.js` | Sky, ground, lights, fog |
 
-The on-screen HUD (Auto Throw, Pets/Rebirth/Items/Store, boosts, power bar) is separate (`src/hud.js`) and isn't part of the map.
+The on-screen HUD (Auto Throw, Pets/Rebirth/Items, boosts, power bar) is separate (`src/hud.js`) and isn't part of the map.

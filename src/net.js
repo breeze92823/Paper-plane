@@ -5,7 +5,8 @@
 // on a socket.
 //
 // Covers: position/avatar relay and the remote-player roster (remotePlayers.js), live
-// stats, the durable save/load for a signed-in player, and the merged leaderboards.
+// stats, the durable save/load for a signed-in player, the merged leaderboards, and a
+// signed-in player's daily-reward calendar and claims (daily.js listens via onDaily).
 import {
   authState,
   getDisplayName,
@@ -19,7 +20,7 @@ import {
 } from './bloxity.js'
 import { NET } from './config.js'
 import { player } from './player.js'
-import { game, hydrate, subscribe as subscribeStore } from './store.js'
+import { game, hydrate, markProgressKnown, subscribe as subscribeStore } from './store.js'
 
 // --- Public state -----------------------------------------------------------
 //   'idle'       not started / torn down / no server configured
@@ -122,7 +123,23 @@ function statsPayload() {
 }
 
 function progressPayload() {
-  return { ...statsPayload(), furthestZone: game.furthestZone, ownedPlanes: [...game.ownedPlanes] }
+  return {
+    ...statsPayload(),
+    furthestZone: game.furthestZone,
+    ownedPlanes: [...game.ownedPlanes],
+    // Pets (eggs): the backend's sanitizeProgress keeps only names its EGG_PETS knows.
+    pets: game.pets.map(({ id, egg, name }) => ({ id, egg, name })),
+    equipped: [...game.equipped],
+    discovered: [...game.discovered],
+    nextPetId: game.nextPetId,
+    tutorialStep: game.tutorialStep,
+    autoThrowOwned: game.autoThrowOwned,
+    x2Owned: { ...game.x2Owned }, // the HUD's x2 Power / x2 Wins, bought with Wins
+    x2On: { ...game.x2On },
+    boosts: { ...game.boosts }, // daily-reward potions still running
+    storedEggs: { ...game.storedEggs }, // the Items window's Eggs and Potions
+    potions: { ...game.potions },
+  }
 }
 
 // The ROOM decides whether this session may persist (its userIds map), so a save sent
@@ -136,7 +153,7 @@ let lastSnap = ''
 
 // The store tells every change (Auto Throw too), so filter to the fields we send.
 function onStoreChange(g) {
-  const snap = JSON.stringify([g.power, g.wins, g.rebirths, g.bestDistance, g.furthestZone, g.equippedPlane, g.ownedPlanes.length])
+  const snap = JSON.stringify([g.power, g.wins, g.rebirths, g.bestDistance, g.furthestZone, g.equippedPlane, g.ownedPlanes.length, g.nextPetId, g.pets.length, g.equipped, g.tutorialStep, g.boosts, g.autoThrowOwned, g.x2Owned, g.x2On, g.storedEggs, g.potions])
   if (snap === lastSnap) return
   lastSnap = snap
   if (!statsTimer) {
@@ -206,6 +223,22 @@ export function reportLocal(dt) {
 // The server drops any faster than a real toss cadence. A no-op while offline.
 export function reportToss(toss) {
   send('throw', toss)
+}
+
+// --- Daily rewards (signed-in) ------------------------------------------------
+// The server keeps a signed-in player's calendar and decides every claim (backend
+// src/daily.ts). daily.js registers { onCalendar(view | null), onClaimed(msg), onDenied(msg) }:
+// a `view` is { start, claimed, now, dayMs }; null hands the calendar back to the guest one.
+let dailyHandlers = null
+export function onDaily(handlers) {
+  dailyHandlers = handlers
+}
+
+// Asks the server to claim `day`; false (nothing sent) while offline.
+export function claimDaily(day) {
+  if (!room) return false
+  send('claimDaily', { day })
+  return true
 }
 
 // --- Identity sync (login/logout mid-session) -------------------------------
@@ -335,12 +368,16 @@ function attachRoom(joined) {
     hydratedFromServer = true
     hydrate(msg || {})
   })
-  // A brand-new account has no save yet: keep playing on local progress.
-  room.onMessage('noProgress', () => {})
+  // A brand-new account has no save yet: keep playing on local progress, and the tutorial
+  // can start at step 0 right away.
+  room.onMessage('noProgress', () => markProgressKnown())
   // Another player's toss; the server never echoes our own back.
   room.onMessage('throw', (msg) => {
     if (msg && remotePlayers.has(msg.id)) notifyRoster('onThrow', msg.id, msg)
   })
+  room.onMessage('daily', (msg) => dailyHandlers?.onCalendar(msg ?? null))
+  room.onMessage('dailyClaimed', (msg) => dailyHandlers?.onClaimed(msg))
+  room.onMessage('dailyDenied', (msg) => dailyHandlers?.onDenied(msg))
   room.onMessage('leaderboard', (msg) => {
     leaderboards = msg || EMPTY_BOARDS
     emit()
@@ -401,8 +438,15 @@ export function init() {
   if (started) return
   started = true
   stopped = false
-  // No server configured for this build: stay 'idle'; every export no-ops without a room.
-  if (!NET.serverUrl) return
+  // Ceiling on learning whether a save exists, so a slow join or lookup never stalls a new
+  // player's tutorial for long.
+  setTimeout(markProgressKnown, NET.progressKnownMs)
+  // No server configured for this build: stay 'idle'; every export no-ops without a room,
+  // and there is no save to wait for.
+  if (!NET.serverUrl) {
+    markProgressKnown()
+    return
+  }
 
   offs.push(
     subscribeStore(onStoreChange),
@@ -413,6 +457,8 @@ export function init() {
     onProportionsChanged(() => sendAvatarNow()),
   )
   waitForAuth(NET.authWaitMs).then(() => {
+    // A guest has no save to load.
+    if (!getStableUserId()) markProgressKnown()
     if (!stopped) connect()
   })
 }

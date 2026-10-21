@@ -1,17 +1,18 @@
-// The on-screen HUD: the Auto Throw toggle and current objective (top), the Pets / Rebirth / Items / Store grid and stats (left), Rewards and the x2
-// boosts (right), and the Power readout, level bar and power packs (bottom). Plain DOM
+// The on-screen HUD: the Auto Throw toggle and the tutorial banner (top), the Pets / Rebirth / Items grid and stats (left), the x2
+// boosts (right), and the THROW button (in the throw area), Power readout and level bar (bottom). Plain DOM
 // over the canvas, drawn at a 1920x990 reference and scaled to the window; only the
 // buttons take the pointer, so the world underneath still gets every other click.
 // Progress (Power, Wins, Rebirths, level, Auto Throw) mirrors store.js.
 import { HUD } from './config.js'
 import { canAcceptRebirth, levelProgress, rebirthLevelsRequired, rebirthProgress } from './progression.js'
-import { acceptRebirth, game, powerMultiplier, setAutoThrow, subscribe } from './store.js'
+import { acceptRebirth, buyAutoThrow, buyX2, game, powerMultiplier, setAutoThrow, setX2, subscribe } from './store.js'
+import { sfx } from './sfx.js'
 
-// Lengths in reference pixels, scaled with the window.
-const u = (n) => `calc(${n} * var(--u))`
+// Lengths in reference pixels, scaled with the window. Shared with eggUi.js.
+export const u = (n) => `calc(${n} * var(--u))`
 
 // Chunky outlined text: an even ring of shadows (scales with --u) plus a soft drop.
-function outline(w, color = '#14100c') {
+export function outline(w, color = '#14100c') {
   const ring = []
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2
@@ -23,7 +24,7 @@ function outline(w, color = '#14100c') {
 
 const ZONE_SHOW_MS = 2200
 
-const FONT = '"Fredoka", "Arial Rounded MT Bold", "Segoe UI", Arial, sans-serif'
+export const FONT = '"Fredoka", "Arial Rounded MT Bold", "Segoe UI", Arial, sans-serif'
 
 const STYLE = `
 .hud{position:fixed;inset:0;pointer-events:none;z-index:4;font-family:${FONT};font-weight:700;color:#fff;
@@ -35,7 +36,7 @@ const STYLE = `
 .hud .t{${outline(3)}}
 .hud [hidden]{display:none!important}
 
-/* --- Auto Throw + objective ------------------------------------------------------------ */
+/* --- Auto Throw + tutorial banner --------------------------------------------------------- */
 .hud .auto{position:absolute;top:${u(12)};left:50%;margin-left:${u(-164)};width:${u(328)};height:${u(78)};box-sizing:border-box;
   border:${u(3.5)} solid #0b1d3f;border-radius:${u(3)};
   background:linear-gradient(#5fd7ff 0%,#22a9ff 45%,#0f74f2 100%);box-shadow:inset 0 ${u(3)} 0 rgba(255,255,255,.45)}
@@ -45,11 +46,32 @@ const STYLE = `
 .hud .auto.on .state{color:#5cff3d}
 .hud .auto .cost{position:absolute;right:${u(-4)};bottom:${u(-18)}}
 .hud .cost{display:flex;align-items:center;gap:${u(3)};font-size:${u(30)};color:#a8ff3a}
+.hud .cost[hidden]{display:none}
+.hud .auto.locked{filter:grayscale(.6)}
 .hud .cost svg{width:${u(30)};height:${u(30)}}
-.hud .objective{position:absolute;top:${u(122)};left:50%;transform:translateX(-50%);white-space:nowrap;
-  padding:${u(8)} ${u(70)};font-size:${u(38)};
-  background:linear-gradient(90deg,transparent,rgba(0,0,0,.32) 15%,rgba(0,0,0,.32) 85%,transparent)}
-.hud .objective:empty{display:none}
+/* Tutorial quest banner (after Stone-Skipping's .quest): a studded yellow bar, its TUTORIAL /
+   COMPLETE tag above and a red warning line under it when needed (tutorial.js). */
+.hud .quest{position:absolute;top:${u(134)};left:50%;transform:translateX(-50%);width:${u(560)};height:${u(62)};
+  box-sizing:border-box;display:flex;align-items:center;justify-content:center;
+  background-color:#ffc93a;border:${u(2.5)} solid #1c1c1c;border-radius:${u(8)};
+  box-shadow:inset 0 ${u(-5)} 0 rgba(0,0,0,.12);
+  background-image:radial-gradient(circle at 50% 50%,rgba(255,255,255,.3) 0 22%,rgba(190,120,0,.18) 26% 32%,transparent 36%);
+  background-size:${u(28)} ${u(28)}}
+.hud .quest-tag{position:absolute;top:${u(-15)};font-size:${u(20)};color:#ffd84a}
+.hud .quest-text{font-size:${u(34)};white-space:nowrap}
+.hud .quest-warn{position:absolute;top:calc(100% + ${u(10)});left:50%;transform:translateX(-50%);
+  font-size:${u(28)};color:#ff3b30;white-space:nowrap}
+.hud .quest-warn:empty{display:none}
+.hud .quest.leaving{animation:quest-out .5s ease-in forwards}
+@keyframes quest-out{0%{opacity:1;transform:translateX(-50%) scale(1)}30%{opacity:1;transform:translateX(-50%) scale(1.15)}
+  100%{opacity:0;transform:translateX(-50%) scale(.2)}}
+/* REBIRTH NOW: dim the whole HUD and block it, but lift the menu with the Rebirth tile ringed
+   (its neighbours stay dark), then in the window ring the confirm button. */
+.hud .tdim{position:absolute;inset:0;z-index:9;background:rgba(0,0,0,.7);pointer-events:auto}
+.hud .menu.spot{z-index:10}
+.hud .menu.spot .tile:not([data-act="rebirth"]){filter:brightness(.3);pointer-events:none}
+.hud .menu.spot [data-act="rebirth"]{box-shadow:0 0 0 ${u(5)} #ffd84a,0 0 ${u(28)} #ffd84a}
+.hud .rb-go.spot{position:relative;z-index:2;box-shadow:0 0 0 ${u(5)} #ffd84a,0 0 0 200vmax rgba(0,0,0,.6)}
 .hud .flight{position:absolute;top:${u(190)};left:50%;transform:translateX(-50%);white-space:nowrap;font-size:${u(54)};
   ${outline(3.5, '#0b1d3f')}}
 .hud .flight:empty{display:none}
@@ -60,30 +82,39 @@ const STYLE = `
 .hud .zonepop .sub.good{color:#5cff3d}
 .hud .zonepop .sub.bad{color:#ff5a4a}
 /* "+N Power" rising off the Power readout, one per training-pad hit. */
-/* Rebirth confirm window (after Stone-Skipping's RebirthWindow): the Rebirth tile opens it; it
-   trades this rebirth's Power and Level for the next multiplier, once the level cap is reached. */
+/* Rebirth confirm window, after the original game's: the Rebirth tile opens it. Two columns
+   (this rebirth -> the next) of Power and MAX Level cards, the level bar, and REBIRTH, which
+   only works once the level cap is reached. */
 .hud .rb{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;
-  background:rgba(0,0,0,.6);pointer-events:auto}
+  background:rgba(0,0,0,.55);pointer-events:auto}
 .hud .rb[hidden]{display:none}
-.hud .rb-win{position:relative;width:${u(560)};max-width:92vw}
-.hud .rb-title{position:absolute;top:${u(-30)};left:${u(18)};z-index:1;font-size:${u(48)};pointer-events:none}
-.hud .rb-close{position:absolute;top:${u(-18)};right:${u(-12)};z-index:1;width:${u(52)};height:${u(52)};
-  border:${u(3)} solid #111 !important;border-radius:${u(9)};background:#dc2626;font-size:${u(28)};
-  box-shadow:0 ${u(4)} 0 rgba(0,0,0,.4)}
-.hud .rb-body{display:flex;flex-direction:column;align-items:center;gap:${u(20)};padding:${u(46)} ${u(30)} ${u(34)};
-  border:${u(3)} solid #111;border-radius:${u(12)};background:rgba(15,23,42,.88)}
-.hud .rb-row{display:flex;align-items:center;gap:${u(34)};font-size:${u(68)};color:#fcd34d}
-.hud .rb-arrow{color:#fff;font-size:${u(80)}}
-.hud .rb-mult{font-size:${u(30)};color:#ffd84a}
-.hud .rb-warn{color:#ef4444;font-size:${u(30)};text-align:center}
-.hud .rb-bar{position:relative;width:60%;height:${u(62)};border:${u(4)} solid #111;border-radius:9999px;background:#f4f4f4;
-  overflow:hidden;box-shadow:inset 0 ${u(3)} ${u(4)} rgba(0,0,0,.12)}
-.hud .rb-fill{position:absolute;inset:0 auto 0 0;background:linear-gradient(180deg,#ffe24d 0%,#ff9d00 52%,#ff2d00 100%)}
-.hud .rb-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:${u(28)}}
-.hud .rb-go{align-self:stretch;padding:${u(14)} ${u(28)};border:${u(3)} solid #111 !important;border-radius:${u(12)};
-  background:linear-gradient(#a3e635,#16a34a);font-size:${u(34)};box-shadow:0 ${u(4)} 0 rgba(0,0,0,.4)}
-.hud .rb-go:hover:not(:disabled){filter:brightness(1.1)}
-.hud .rb-go:disabled{cursor:not-allowed;opacity:.4}
+.hud .rb-win{position:relative;width:${u(680)};max-width:92vw}
+.hud .rb-title{position:absolute;top:${u(-38)};left:${u(44)};z-index:1;font-size:${u(64)};letter-spacing:${u(1)};
+  pointer-events:none;${outline(5, '#111')}}
+.hud .rb-close{position:absolute;top:${u(-24)};right:${u(-26)};z-index:1;width:${u(74)};height:${u(74)};
+  border:${u(4)} solid #111 !important;border-radius:${u(4)};background:linear-gradient(#ff3b3b,#d4111b);
+  font-size:${u(56)};box-shadow:inset 0 0 0 ${u(3)} #ff8a8a;${outline(4, '#111')}}
+.hud .rb-body{display:flex;flex-direction:column;gap:${u(14)};padding:${u(62)} ${u(20)} ${u(16)};
+  border:${u(4)} solid #111;border-radius:${u(6)};background:rgba(18,18,22,.84)}
+.hud .rb-grid{display:grid;grid-template-columns:1fr ${u(78)} 1fr;gap:${u(12)} ${u(8)};align-items:center}
+.hud .rb-head{text-align:center;font-size:${u(38)};margin-bottom:${u(-4)}}
+.hud .rb-card,.hud .rb-bar{position:relative;display:flex;align-items:center;justify-content:center;
+  border:${u(3)} solid #e07800;background:linear-gradient(#ffe23a,#ffb300 55%,#ff8c00);
+  box-shadow:inset 0 ${u(-4)} 0 rgba(0,0,0,.12),inset 0 ${u(3)} 0 rgba(255,255,255,.35)}
+.hud .rb-card{height:${u(88)};font-size:${u(38)};white-space:nowrap}
+.hud .rb-card .rb-ico{position:absolute;left:50%;top:50%;width:${u(84)};height:${u(84)};transform:translate(-50%,-50%)}
+.hud .rb-card span,.hud .rb-bar .rb-label{position:relative;${outline(3.5, '#1a0e00')}}
+.hud .rb-ff{width:${u(70)};height:${u(56)};justify-self:center}
+.hud .rb-bar{height:${u(60)};font-size:${u(40)};overflow:hidden;background:#5a3608}
+.hud .rb-fill{position:absolute;inset:0 auto 0 0;background:linear-gradient(#ffe23a,#ffb300 55%,#ff8c00)}
+.hud .rb-label{display:flex;align-items:center;gap:${u(12)};white-space:nowrap}
+.hud .rb-label svg{width:${u(46)};height:${u(46)}}
+.hud .rb-go{height:${u(96)};border:${u(3)} solid #0d6b06 !important;background:linear-gradient(#c6ff3a,#4cd61c 55%,#22b30f);
+  font-size:${u(66)};letter-spacing:${u(1)};box-shadow:inset 0 ${u(3)} 0 rgba(255,255,255,.45);${outline(4.5, '#111')}}
+.hud .rb-go:hover:not(:disabled){filter:brightness(1.08)}
+.hud .rb-go:disabled{cursor:not-allowed;filter:grayscale(.85) brightness(.7)}
+.hud .rb-note{position:absolute;left:0;right:0;top:100%;margin-top:${u(10)};text-align:center;font-size:${u(28)};
+  color:#ff2b2b;white-space:nowrap;${outline(3, '#2a0000')}}
 /* The Rebirth tile's icon pulses once a rebirth is ready. */
 .hud .tile.ready svg{animation:rebirth-ready .9s ease-in-out infinite alternate}
 @keyframes rebirth-ready{to{transform:scale(1.18)}}
@@ -114,26 +145,31 @@ const STYLE = `
   background:linear-gradient(90deg,rgba(0,0,0,.34) 40%,transparent)}
 .hud .stat svg{width:${u(66)};height:${u(66)};flex:none}
 .hud .stat span{font-size:${u(42)};color:#ffc21c;${outline(3.5, '#2a1400')}}
-.hud .boost{display:flex;align-items:center;gap:${u(8)};font-size:${u(22)};font-style:italic;margin-top:${u(-2)}}
-.hud .boost button{width:${u(26)};height:${u(26)};border-radius:${u(4)};background:#38c93a;border:${u(2)} solid #fff;
-  box-sizing:border-box;font-size:${u(22)};font-style:normal;display:grid;place-items:center;line-height:0}
 
 /* --- Right column -------------------------------------------------------------------------- */
 .hud .side{position:absolute;right:${u(18)};top:50%;transform:translateY(calc(-50% + ${u(45)}));
   width:${u(212)};display:flex;flex-direction:column;align-items:center;gap:${u(30)}}
-.hud .rewards{position:relative;width:${u(110)};height:${u(96)};margin-bottom:${u(-4)}}
-.hud .rewards svg{width:${u(96)};height:${u(96)};margin:0 auto}
-.hud .rewards .name{position:absolute;left:${u(-20)};right:${u(-20)};bottom:${u(-6)};font-size:${u(28)}}
-.hud .rewards .badge{right:${u(-6)};top:${u(-6)};width:${u(34)};height:${u(34)};font-size:${u(22)}}
 .hud .boost2{position:relative;width:${u(212)};height:${u(64)};box-sizing:border-box;border:${u(3)} solid #1a1205;
   border-radius:${u(3)};background:linear-gradient(#ffe95c,#ffc21c 55%,#ff9f0a);
   box-shadow:inset 0 ${u(3)} 0 rgba(255,255,255,.5)}
 .hud .boost2 .arm{position:absolute;left:50%;top:${u(-14)};width:${u(52)};height:${u(52)};margin-left:${u(-26)}}
 .hud .boost2 .label{position:relative;font-size:${u(30)}}
 .hud .boost2 .cost{position:absolute;left:0;right:0;bottom:${u(-22)};justify-content:center}
+/* Once bought, ON / OFF replaces the price; switched off, the button greys out. */
+.hud .boost2 .state{position:absolute;left:0;right:0;bottom:${u(-22)};font-size:${u(28)};color:#ff3d1c}
+.hud .boost2.x2on .state{color:#5cff3d}
+.hud .boost2.owned:not(.x2on){filter:grayscale(.7) brightness(.85)}
 
 /* --- Bottom centre ------------------------------------------------------------------------- */
 .hud .power{position:absolute;left:50%;bottom:${u(22)};width:${u(540)};margin-left:${u(-270)}}
+/* THROW, over the level bar while the player stands in the throw area. */
+.hud .throw{display:flex;align-items:center;justify-content:center;gap:${u(12)};width:${u(300)};height:${u(78)};
+  margin:0 auto ${u(14)};box-sizing:border-box;border:${u(3.5)} solid #0d3a12;border-radius:${u(3)};
+  background:linear-gradient(#8ff25a,#3fcf2a 55%,#1f9e1a);box-shadow:inset 0 ${u(3)} 0 rgba(255,255,255,.5);
+  font-size:${u(44)};animation:throw-ready .8s ease-in-out infinite alternate}
+.hud .throw svg{width:${u(46)};height:${u(46)}}
+.hud .throw:active{animation:none}
+@keyframes throw-ready{to{transform:scale(1.06)}}
 .hud .readout{display:flex;justify-content:space-between;font-size:${u(28)};color:#ffb21a;padding:0 ${u(2)} ${u(4)};
   ${outline(3, '#2a1000')}}
 .hud .bar{position:relative;height:${u(48)};box-sizing:border-box;border:${u(3)} solid #1a1205;border-radius:${u(3)};
@@ -142,16 +178,6 @@ const STYLE = `
   box-shadow:inset 0 ${u(3)} 0 rgba(255,255,255,.45)}
 .hud .bar .txt{position:absolute;inset:0;display:flex;justify-content:space-between;align-items:center;
   padding:0 ${u(8)};font-size:${u(28)}}
-.hud .packs{display:flex;gap:${u(18)};margin-top:${u(10)}}
-.hud .pack{position:relative;flex:1;height:${u(47)};box-sizing:border-box;border:${u(3)} solid #1a1205;border-radius:${u(3)};
-  box-shadow:inset 0 ${u(3)} 0 rgba(255,255,255,.45)}
-.hud .pack:nth-child(1){flex:0 0 ${u(150)};background:linear-gradient(#ffe95c,#ffc21c 55%,#ff9f0a)}
-.hud .pack:nth-child(2){background:linear-gradient(#7fe3ff,#2fb0ff 55%,#1673f0)}
-.hud .pack:nth-child(3){background:linear-gradient(#f08aff,#cc45f5 55%,#9324e0)}
-.hud .pack .arm{position:absolute;left:${u(-6)};top:${u(-14)};width:${u(56)};height:${u(56)}}
-.hud .pack .label{position:relative;padding-left:${u(34)};font-size:${u(30)}}
-.hud .pack .cost{position:absolute;right:${u(18)};bottom:${u(-20)};font-size:${u(24)}}
-.hud .pack .cost svg{width:${u(24)};height:${u(24)}}
 `
 
 // Shared gradients and icon symbols; each icon is drawn once and <use>d everywhere.
@@ -161,9 +187,7 @@ const DEFS = `
   <linearGradient id="hg-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff07a"/><stop offset=".55" stop-color="#ffc21c"/><stop offset="1" stop-color="#f08a00"/></linearGradient>
   <linearGradient id="hg-cat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffab4a"/><stop offset="1" stop-color="#f2621a"/></linearGradient>
   <linearGradient id="hg-bag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff5a4a"/><stop offset="1" stop-color="#c5121c"/></linearGradient>
-  <linearGradient id="hg-gift" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7aa6"/><stop offset="1" stop-color="#e01f55"/></linearGradient>
   <linearGradient id="hg-cycle" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#8fdcff"/></linearGradient>
-
   <symbol id="hi-gem" viewBox="0 0 64 64">
     <path d="M32 4 56 18v28L32 60 8 46V18Z" fill="#9cf03a" stroke="#173d0a" stroke-width="5" stroke-linejoin="round"/>
     <path d="M32 18 44 25v14L32 46 20 39V25Z" fill="#2c8a1a" stroke="#173d0a" stroke-width="3.5" stroke-linejoin="round"/>
@@ -203,14 +227,9 @@ const DEFS = `
     <ellipse cx="13" cy="45" rx="4" ry="2.5" fill="#ff7a8f" opacity=".7"/><ellipse cx="51" cy="45" rx="4" ry="2.5" fill="#ff7a8f" opacity=".7"/>
   </symbol>
 
+  <!-- Chop-trees-for-treasure's rebirth icon image (public/ui/rebirth.png). -->
   <symbol id="hi-rebirth" viewBox="0 0 64 64">
-    <path d="M5 32a27 27 0 0 1 54 0Z" fill="#ff4fa0"/>
-    <path d="M5 32a27 27 0 0 0 54 0Z" fill="#62d2ff"/>
-    <circle cx="32" cy="32" r="27" fill="none" stroke="#2e0f2a" stroke-width="4"/>
-    <path d="M18 43A15 15 0 1 1 45 41" fill="none" stroke="#2e0f2a" stroke-width="12" stroke-linecap="round"/>
-    <path d="M37 52 52 45 39 34Z" fill="#2e0f2a" stroke="#2e0f2a" stroke-width="6" stroke-linejoin="round"/>
-    <path d="M18 43A15 15 0 1 1 45 41" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
-    <path d="M37 52 52 45 39 34Z" fill="#fff"/>
+    <image href="${import.meta.env.BASE_URL}ui/rebirth.png" width="64" height="64"/>
   </symbol>
 
   <symbol id="hi-bag" viewBox="0 0 64 64">
@@ -223,22 +242,6 @@ const DEFS = `
     <rect x="27" y="38" width="10" height="8" rx="2" fill="#d6dce6" stroke="#3d0004" stroke-width="2"/>
   </symbol>
 
-  <symbol id="hi-basket" viewBox="0 0 64 64">
-    <path d="M15 28C15 4 49 4 49 28" fill="none" stroke="#4a2200" stroke-width="9" stroke-linecap="round"/>
-    <path d="M15 28C15 4 49 4 49 28" fill="none" stroke="#ffbf2a" stroke-width="4" stroke-linecap="round"/>
-    <path d="M7 30h50l-6 28H13Z" fill="url(#hg-gold)" stroke="#4a2200" stroke-width="3.5" stroke-linejoin="round"/>
-    <path d="M22 36v18M32 36v18M42 36v18M11 45h42" stroke="#c76400" stroke-width="3" stroke-linecap="round"/>
-    <rect x="4" y="23" width="56" height="10" rx="4" fill="#ffd23a" stroke="#4a2200" stroke-width="3.5"/>
-  </symbol>
-
-  <symbol id="hi-gift" viewBox="0 0 64 64">
-    <path d="M32 18C24 2 8 6 14 16q4 4 18 2ZM32 18c8-16 24-12 18-2q-4 4-18 2Z" fill="#ffd23a" stroke="#4a1a00" stroke-width="3.5" stroke-linejoin="round"/>
-    <rect x="10" y="29" width="44" height="30" rx="4" fill="url(#hg-gift)" stroke="#4a0018" stroke-width="3.5"/>
-    <rect x="6" y="18" width="52" height="14" rx="4" fill="#ff7aa6" stroke="#4a0018" stroke-width="3.5"/>
-    <path d="M27 18h10v41H27Z" fill="#ffd23a" stroke="#4a1a00" stroke-width="3" stroke-linejoin="round"/>
-    <circle cx="32" cy="18" r="5" fill="#ffb000" stroke="#4a1a00" stroke-width="3"/>
-  </symbol>
-
   <symbol id="hi-trophy" viewBox="0 0 64 64">
     <path d="M17 14H8c0 12 6 17 12 17M47 14h9c0 12-6 17-12 17" fill="none" stroke="#4a2600" stroke-width="8" stroke-linejoin="round"/>
     <path d="M17 14H8c0 12 6 17 12 17M47 14h9c0 12-6 17-12 17" fill="none" stroke="#ffc21c" stroke-width="3.5" stroke-linejoin="round"/>
@@ -247,10 +250,27 @@ const DEFS = `
     <rect x="17" y="49" width="30" height="10" rx="3" fill="url(#hg-gold)" stroke="#4a2600" stroke-width="3.5"/>
     <path d="M32 13l3 6.2 6.8.8-5 4.7 1.3 6.8L32 28l-6 3.5 1.3-6.8-5-4.7 6.8-.8Z" fill="#fff6c0" stroke="#c77a00" stroke-width="1.5" stroke-linejoin="round"/>
   </symbol>
+
+  <symbol id="hi-plane" viewBox="0 0 24 24">
+    <path d="M3 11.5 21 4l-6.5 16-3-6.5Z" fill="#fff" stroke="#0d3a12" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="M11.5 13.5 21 4" stroke="#0d3a12" stroke-width="1.8" stroke-linecap="round"/>
+  </symbol>
+  <linearGradient id="hg-ff" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2fcff"/><stop offset=".5" stop-color="#9fe2ff"/><stop offset="1" stop-color="#3fa9f5"/></linearGradient>
+  <symbol id="hi-lvlstar" viewBox="0 0 64 64">
+    <path d="M32 4l8.4 17.4 19.2 2.6-14 13.4 3.4 19L32 47.2 15 56.4l3.4-19-14-13.4 19.2-2.6Z"
+      fill="url(#hg-gold)" stroke="#8a4a00" stroke-width="3.5" stroke-linejoin="round"/>
+    <path d="M24 22l5-10" stroke="#fff8c8" stroke-width="3" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="hi-ff" viewBox="0 0 80 64">
+    <g fill="url(#hg-ff)" stroke="#1f6fbf" stroke-width="4" stroke-linejoin="round">
+      <path d="M6 8 36 32 6 56Z"/><path d="M38 8 74 32 38 56Z"/>
+    </g>
+    <path d="M12 18 28 31M44 18 64 31" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".8"/>
+  </symbol>
 </defs></svg>`
 
 const icon = (id, cls = '') => `<svg class="${cls}"><use href="#hi-${id}"/></svg>`
-const cost = (key) => `<span class="cost t">${icon('gem')}<span data-price="${key}"></span></span>`
+const cost = (key, ico = 'gem') => `<span class="cost t">${icon(ico)}<span data-price="${key}"></span></span>`
 
 const MARKUP = `
 ${DEFS}
@@ -258,9 +278,10 @@ ${DEFS}
   ${icon('cycle', 'cycle')}
   <span class="label">Auto Throw</span>
   <span class="state t" data-k="autoThrow"></span>
-  ${cost('autoThrow')}
+  ${cost('autoThrow', 'trophy')}
 </button>
-<div class="objective t" data-k="objective"></div>
+<div class="quest" hidden><div class="quest-tag t"></div><div class="quest-text t"></div><div class="quest-warn t"></div></div>
+<div class="tdim" hidden></div>
 <div class="flight" data-k="flight"></div>
 <div class="zonepop"><div class="name t"></div><div class="sub t"></div></div>
 
@@ -268,44 +289,47 @@ ${DEFS}
   <button class="tile" data-act="pets">${icon('cat')}<span class="name t">Pets</span></button>
   <button class="tile" data-act="rebirth"><span class="pct t" data-k="rebirthProgress"></span>${icon('rebirth')}<span class="name t">Rebirth</span></button>
   <button class="tile" data-act="items">${icon('bag')}<span class="name t">Items</span></button>
-  <button class="tile" data-act="store">${icon('basket')}<span class="name t">Store</span><span class="badge t" data-alert="store">!</span></button>
 </div>
 
 <div class="stats">
   <div class="stat">${icon('trophy')}<span data-k="wins"></span></div>
   <div class="stat">${icon('rebirth')}<span data-k="rebirths"></span></div>
-  <div class="boost t"><span>Friend Boost: <span data-k="friendBoost"></span></span><button class="t" data-act="invite" aria-label="Invite friends">+</button></div>
 </div>
 
 <div class="side">
-  <button class="rewards" data-act="rewards">${icon('gift')}<span class="name t">Rewards</span><span class="badge t" data-alert="rewards">!</span></button>
-  <button class="boost2" data-act="x2Power">${icon('arm', 'arm')}<span class="label t">x2 Power</span>${cost('x2Power')}</button>
-  <button class="boost2" data-act="x2Wins">${icon('arm', 'arm')}<span class="label t">x2 Wins</span>${cost('x2Wins')}</button>
+  <button class="boost2" data-act="x2Power" data-x2="power">${icon('arm', 'arm')}<span class="label t">x2 Power</span>${cost('x2Power', 'trophy')}<span class="state t"></span></button>
+  <button class="boost2" data-act="x2Wins" data-x2="wins">${icon('arm', 'arm')}<span class="label t">x2 Wins</span>${cost('x2Wins', 'trophy')}<span class="state t"></span></button>
 </div>
 
 <div class="power">
+  <button class="throw" data-act="throw" hidden>${icon('plane')}<span class="t">THROW</span></button>
   <div class="readout"><span>Power: <span data-k="power"></span></span><span>Multiplier: <span data-k="multiplier"></span></span></div>
   <div class="bar"><div class="fill"></div><div class="txt t"><span>LEVEL <span data-k="level"></span></span><span data-k="maxLevel"></span></div></div>
-  <div class="packs">
-    <button class="pack" data-act="power100K">${icon('arm', 'arm')}<span class="label t">+100K</span>${cost('power100K')}</button>
-    <button class="pack" data-act="power1M">${icon('arm', 'arm')}<span class="label t">+1M</span>${cost('power1M')}</button>
-    <button class="pack" data-act="power10M">${icon('arm', 'arm')}<span class="label t">+10M</span>${cost('power10M')}</button>
-  </div>
 </div>
 
 <div class="rb" hidden>
   <div class="rb-win" role="dialog" aria-label="Rebirth">
-    <span class="rb-title t">Rebirth</span>
-    <button class="rb-close t" data-act="rebirthClose" aria-label="Close">X</button>
+    <span class="rb-title">REBIRTH</span>
+    <button class="rb-close" data-act="rebirthClose" aria-label="Close">X</button>
     <div class="rb-body">
-      <div class="rb-row t"><span data-rb="from"></span><span class="rb-arrow">▶</span><span data-rb="to"></span></div>
-      <div class="rb-mult t" data-rb="mult"></div>
-      <div class="rb-warn t">Rebirth resets your Power and Level!</div>
-      <div class="rb-bar"><div class="rb-fill"></div><span class="rb-label t" data-rb="level"></span></div>
-      <button class="rb-go t" data-act="rebirthConfirm" data-rb="go"></button>
+      <div class="rb-grid">
+        <div class="rb-head t" data-rb="fromHead"></div><div></div><div class="rb-head t" data-rb="toHead"></div>
+        <div class="rb-card">${icon('arm', 'rb-ico')}<span data-rb="fromPower"></span></div>
+        ${icon('ff', 'rb-ff')}
+        <div class="rb-card">${icon('arm', 'rb-ico')}<span data-rb="toPower"></span></div>
+        <div class="rb-card">${icon('lvlstar', 'rb-ico')}<span data-rb="fromMax"></span></div>
+        ${icon('ff', 'rb-ff')}
+        <div class="rb-card">${icon('lvlstar', 'rb-ico')}<span data-rb="toMax"></span></div>
+      </div>
+      <div class="rb-bar"><div class="rb-fill"></div><span class="rb-label">${icon('lvlstar')}<span data-rb="level"></span></span></div>
+      <button class="rb-go" data-act="rebirthConfirm">REBIRTH</button>
     </div>
+    <div class="rb-note">Rebirth resets Power &amp; Levels. Wins, Planes and Pets stay!</div>
   </div>
 </div>`
+
+// A multiplier with pets in it: 1.35 -> "1.35", 2 -> "2", 1234.5 -> "1.2K".
+export const formatMultiplier = (v) => (v >= 1000 ? formatNumber(v) : String(+v.toFixed(2)))
 
 const SUFFIXES = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi']
 // 9600 -> "9.6K", 1250000 -> "1.2M", 24 -> "24"
@@ -324,8 +348,7 @@ const FORMAT = {
   wins: formatNumber,
   rebirths: formatNumber,
   power: formatNumber,
-  friendBoost: (v) => `+${v}%`,
-  multiplier: (v) => `x${v}`,
+  multiplier: (v) => `x${formatMultiplier(v)}`,
   rebirthProgress: (v) => `${Math.round(v)}%`,
   autoThrow: (v) => (v ? 'ON' : 'OFF'),
   maxLevel: (v) => (v ? 'MAX LEVEL' : ''),
@@ -345,11 +368,12 @@ function progressFields(g) {
     maxLevel,
     rebirthProgress: rebirthProgress(g.power, g.rebirths) * 100,
     autoThrow: g.autoThrow,
+    autoThrowOwned: g.autoThrowOwned,
   }
 }
 
 // Builds the HUD. `actions` maps a button name (data-act) to a handler; Auto Throw acts on the
-// store itself, and Rebirth opens the confirm window, which does. Returns { state, set(patch), setAlert(name, on), showPopup(name, sub, tone), floatGain(text) }.
+// store itself, and Rebirth opens the confirm window, which does. Returns { root, state, set(patch), setAlert(name, on), showPopup(name, sub, tone), floatGain(text), setQuest(view) }.
 export function createHud(actions = {}) {
   const style = document.createElement('style')
   style.textContent = STYLE
@@ -367,13 +391,17 @@ export function createHud(actions = {}) {
   window.addEventListener('resize', fit)
   fit()
 
-  for (const el of root.querySelectorAll('[data-price]')) el.textContent = HUD.prices[el.dataset.price]
+  for (const el of root.querySelectorAll('[data-price]')) el.textContent = formatNumber(HUD.prices[el.dataset.price])
 
-  const state = { ...HUD.start, alerts: { ...HUD.start.alerts }, flight: '', ...progressFields(game) }
+  const state = { ...HUD.start, alerts: { ...HUD.start.alerts }, flight: '', canThrow: false, ...progressFields(game) }
   const fields = [...root.querySelectorAll('[data-k]')]
   const autoBtn = root.querySelector('.auto')
+  const autoCost = autoBtn.querySelector('.cost')
+  const autoState = autoBtn.querySelector('.state')
+  const throwBtn = root.querySelector('.throw')
   const fill = root.querySelector('.bar .fill')
   const rebirthTile = root.querySelector('[data-act="rebirth"]')
+  const x2Btns = [...root.querySelectorAll('[data-x2]')]
 
   function render() {
     for (const el of fields) {
@@ -381,6 +409,21 @@ export function createHud(actions = {}) {
       el.textContent = FORMAT[el.dataset.k] ? FORMAT[el.dataset.k](v) : v
     }
     autoBtn.classList.toggle('on', state.autoThrow)
+    autoBtn.classList.toggle('locked', !state.autoThrowOwned)
+    autoCost.hidden = state.autoThrowOwned
+    autoState.hidden = !state.autoThrowOwned
+    throwBtn.hidden = !state.canThrow
+    for (const btn of x2Btns) {
+      const stat = btn.dataset.x2
+      const owned = game.x2Owned[stat]
+      const on = owned && game.x2On[stat]
+      btn.classList.toggle('owned', owned)
+      btn.classList.toggle('x2on', on)
+      btn.querySelector('.cost').hidden = owned
+      const label = btn.querySelector('.state')
+      label.hidden = !owned
+      label.textContent = on ? 'ON' : 'OFF'
+    }
     rebirthTile.classList.toggle('ready', canAcceptRebirth(game.power, game.rebirths))
     fill.style.width = `${Math.max(0, Math.min(1, state.levelProgress)) * 100}%`
     for (const el of root.querySelectorAll('[data-alert]')) el.hidden = !state.alerts[el.dataset.alert]
@@ -396,14 +439,46 @@ export function createHud(actions = {}) {
     render()
   }
 
+  // Every button (here and in the windows built into this root) gives a tactile click as it
+  // goes down; what it then does may add its own sound. THROW sounds like the throw instead.
+  root.addEventListener('pointerdown', (e) => {
+    const b = e.target.closest('button')
+    if (b && !b.disabled && b.dataset.act !== 'throw') sfx.click()
+  })
+
   root.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-act]')
     if (!btn) return
     const act = btn.dataset.act
-    if (act === 'autoThrow') setAutoThrow(!game.autoThrow)
+    if (act === 'autoThrow') {
+      if (game.autoThrowOwned) {
+        setAutoThrow(!game.autoThrow)
+        if (game.autoThrow) sfx.toggleOn()
+        else sfx.toggleOff()
+      } else if (buyAutoThrow(HUD.prices.autoThrow)) sfx.buy()
+      else sfx.denied()
+    }
+    // x2 Power / x2 Wins: bought once with Wins (switched on), then ON / OFF like Auto Throw.
+    const x2 = btn.dataset.x2
+    if (x2) {
+      if (game.x2Owned[x2]) {
+        setX2(x2, !game.x2On[x2])
+        if (game.x2On[x2]) sfx.toggleOn()
+        else sfx.toggleOff()
+      } else if (buyX2(x2, HUD.prices[act])) {
+        sfx.buy()
+        showPopup(`x2 ${x2 === 'power' ? 'Power' : 'Wins'} bought!`, 'Tap it to switch it on or off', 'good')
+      } else {
+        sfx.denied()
+        showPopup(`🏆 ${formatNumber(HUD.prices[act])} Wins`, `needed: you have ${formatNumber(game.wins)}`, 'bad')
+      }
+    }
     if (act === 'rebirth') openRebirth(true)
     if (act === 'rebirthClose') openRebirth(false)
-    if (act === 'rebirthConfirm' && acceptRebirth()) openRebirth(false)
+    if (act === 'rebirthConfirm' && acceptRebirth()) {
+      sfx.rebirth()
+      openRebirth(false, true)
+    }
     actions[act]?.(state)
   })
 
@@ -416,16 +491,21 @@ export function createHud(actions = {}) {
     const need = rebirthLevelsRequired(g.rebirths)
     const { level } = levelProgress(g.power)
     const ready = canAcceptRebirth(g.power, g.rebirths)
-    rbField('from').textContent = `X${formatNumber(g.rebirths)}`
-    rbField('to').textContent = `X${formatNumber(g.rebirths + 1)}`
-    rbField('mult').textContent = `Multiplier x${formatNumber(powerMultiplier())} ▶ x${formatNumber(g.multiplier * (g.rebirths + 2))}`
-    rbField('level').textContent = `Level ${formatNumber(level)}/${formatNumber(need)}`
-    rbFill.style.width = `${rebirthProgress(g.power, g.rebirths) * 100}%`
-    const go = rbField('go')
-    go.disabled = !ready
-    go.textContent = ready ? 'Rebirth' : `Level ${formatNumber(need)} needed`
+    // The next rebirth swaps this one's (rebirths + 1) factor for (rebirths + 2); pets and boosts carry over.
+    const mult = powerMultiplier()
+    rbField('fromHead').textContent = `Rebirth ${formatNumber(g.rebirths)}:`
+    rbField('toHead').textContent = `Rebirth ${formatNumber(g.rebirths + 1)}:`
+    rbField('fromPower').textContent = `X${formatMultiplier(mult)} Power`
+    rbField('toPower').textContent = `X${formatMultiplier((mult / (g.rebirths + 1)) * (g.rebirths + 2))} Power`
+    rbField('fromMax').textContent = `MAX Level ${formatNumber(need)}`
+    rbField('toMax').textContent = `MAX Level ${formatNumber(rebirthLevelsRequired(g.rebirths + 1))}`
+    rbField('level').textContent = ready ? `Level ${formatNumber(need)} COMPLETE` : `Level ${formatNumber(level)} / ${formatNumber(need)}`
+    rbFill.style.width = `${ready ? 100 : rebirthProgress(g.power, g.rebirths) * 100}%`
+    rb.querySelector('.rb-go').disabled = !ready
   }
-  function openRebirth(open) {
+  // `quiet` skips the closing swoosh (a rebirth has its own sound).
+  function openRebirth(open, quiet = false) {
+    if (open === rb.hidden && !quiet) (open ? sfx.open : sfx.close)()
     rb.hidden = !open
     renderRebirth(game)
   }
@@ -461,5 +541,30 @@ export function createHud(actions = {}) {
     root.appendChild(el)
   }
 
-  return { state, set, setAlert, showPopup, floatGain }
+  // --- Tutorial (tutorial.js's stepTutorial view, every frame; only real changes touch the DOM)
+  const quest = root.querySelector('.quest')
+  const questTag = quest.querySelector('.quest-tag')
+  const questText = quest.querySelector('.quest-text')
+  const questWarn = quest.querySelector('.quest-warn')
+  const dim = root.querySelector('.tdim')
+  const menu = root.querySelector('.menu')
+  const confirmBtn = rb.querySelector('.rb-go')
+  let lastQuest = ''
+  function setQuest({ banner, spotlight }) {
+    const key = JSON.stringify([banner, spotlight])
+    if (key === lastQuest) return
+    lastQuest = key
+    quest.hidden = !banner
+    if (banner) {
+      questTag.textContent = banner.tag
+      questText.textContent = banner.text
+      questWarn.textContent = banner.warn
+      quest.classList.toggle('leaving', banner.leaving)
+    }
+    dim.hidden = !spotlight
+    menu.classList.toggle('spot', spotlight)
+    confirmBtn.classList.toggle('spot', spotlight)
+  }
+
+  return { root, state, set, setAlert, showPopup, floatGain, setQuest }
 }
