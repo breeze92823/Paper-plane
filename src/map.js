@@ -5,7 +5,8 @@
 // around it all. Layout lives in config.js (MAP); builders in props.js.
 import { Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, RingGeometry } from 'three'
 import { addCollider, addPusher } from './colliders.js'
-import { MAP, MATERIAL_PBR, PALETTE as P, SPAWN, STREET } from './config.js'
+import { MAP, MATERIAL_PBR, PALETTE as P, PORTAL, SPAWN, STREET, STREET_ZONES, WATERFALL, WORLD } from './config.js'
+import { createIceDecor } from './iceWorld.js'
 import { goldTexture, lavaTexture, neonTexture, rainbowTexture, waterfallTexture } from './textures.js'
 import {
   basketballCourt,
@@ -179,14 +180,14 @@ export function createMap() {
 
   // --- World 2 portal + Demon Egg -------------------------------------------------
   const w2 = MAP.world2
-  const portal = world2Portal()
+  const portal = world2Portal(PORTAL.swirl)
   root.add(place(portal.group, w2.x, 0, w2.z, faceSpawn(w2.x, w2.z)))
   addCollider(w2.x, w2.z, 6, 1.4, 6, faceSpawn(w2.x, w2.z))
   animate.push((t) => (portal.swirl.rotation.z = -t * 1.6))
   root.add(place(
     makeSign([
-      { text: '🌐 World 2', color: '#ffffff', size: 64 },
-      { text: '💪 Needs 2.5M Power', color: '#ffb01f', size: 40 },
+      { text: PORTAL.title, color: '#ffffff', size: 64 },
+      { text: PORTAL.sub, color: PORTAL.subColor, size: 40 },
     ], 2.4),
     w2.x, 7.6, w2.z,
   ))
@@ -312,7 +313,7 @@ export function createMap() {
   // Waterfalls cascading down the cliff behind the eggs, facing the plaza.
   for (const f of MAP.waterfalls) root.add(place(waterfall(f.w, f.faces), f.x, 0, 0))
   const fallTex = waterfallTexture()
-  animate.push((t, dt) => (fallTex.offset.y = (fallTex.offset.y + dt * 1.4) % 1))
+  animate.push((t, dt) => (fallTex.offset.y = (fallTex.offset.y + dt * WATERFALL.flow) % 1))
 
   // --- Throw area + field (north) -----------------------------------------------
   // The walkway's north strip is the throw area; its name is painted across it.
@@ -359,7 +360,7 @@ export function createMap() {
   // side to the field fence. The fences can be jumped and the lots walked, so the real barrier
   // is one invisible wall across the whole corridor. Past it, only planes go (street.js).
   const gateSpan = fd.roadHalf * 2 + 4
-  root.add(place(gate(gateSpan, 11, '🏠 Neighbourhood'), 0, 0, fd.gateZ))
+  root.add(place(gate(gateSpan, 11, `${STREET_ZONES[0].icon} ${STREET_ZONES[0].label}`), 0, 0, fd.gateZ))
   for (const sx of [-1, 1]) addCollider((sx * gateSpan) / 2, fd.gateZ, 2.2, 2.2, 11)
   const pillarEdge = gateSpan / 2 + 1.1
   const fenceX = fd.halfWidth + fd.sidewalk + 0.35
@@ -404,6 +405,9 @@ export function createMap() {
     root.add(place(building(spec), x, 0, z, rot))
     addCollider(x, z, spec.w, spec.d, spec.h + 4, rot)
   }
+
+  // --- Ice World only: igloos, snowmen, penguins, crystals, snow (iceWorld.js) ----------
+  if (WORLD === 2) root.add(createIceDecor())
 
   return {
     root,

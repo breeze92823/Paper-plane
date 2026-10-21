@@ -1,7 +1,7 @@
 // Canvas-painted textures: tileable grass, studded checker bricks, planks. Each
 // painter is cached by its arguments. Everything is procedural, no image files.
 import { CanvasTexture, NearestFilter, RepeatWrapping, SRGBColorSpace } from 'three'
-import { COLORS, GROUND_SIZE } from './config.js'
+import { COLORS, GROUND_SIZE, WATERFALL } from './config.js'
 
 const cache = new Map()
 function cached(key, make) {
@@ -517,10 +517,10 @@ export function waterfallTexture() {
     const rand = mulberry32(88)
     const c = canvas(64, 128)
     const g = c.getContext('2d')
-    g.fillStyle = '#4fc8ff'
+    g.fillStyle = WATERFALL.base
     g.fillRect(0, 0, 64, 128)
     for (let i = 0; i < 60; i++) {
-      g.fillStyle = rand() < 0.5 ? 'rgba(255,255,255,0.75)' : 'rgba(30,140,230,0.6)'
+      g.fillStyle = rand() < 0.5 ? WATERFALL.light : WATERFALL.dark
       const x = rand() * 64
       const y = rand() * 128
       const h = 10 + rand() * 40

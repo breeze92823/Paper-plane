@@ -416,8 +416,8 @@ export function hall(halfWidth, height, length) {
 }
 
 // --- Centre attractions -------------------------------------------------------
-// World 2 teleporter: shallow pool, ring of ice crystals, spinning swirl.
-export function world2Portal() {
+// World teleporter: shallow pool, ring of ice crystals, spinning swirl in `swirl` colours.
+export function world2Portal(swirlColors = ['#1d4fd8', '#9fe6ff']) {
   const g = new Group()
   g.add(part(new CylinderGeometry(3.6, 3.8, 0.3, 40), solid(P.whiteShade), 0, 0.15, 0))
   g.add(part(new CylinderGeometry(3.2, 3.2, 0.32, 40), solid(P.water, { roughness: 0.2 }), 0, 0.17, 0))
@@ -438,7 +438,7 @@ export function world2Portal() {
   }
   const swirl = new Mesh(
     new CircleGeometry(R - 0.25, 48),
-    new MeshBasicMaterial({ map: swirlTexture('#1d4fd8', '#9fe6ff'), transparent: true, side: DoubleSide }),
+    new MeshBasicMaterial({ map: swirlTexture(...swirlColors), transparent: true, side: DoubleSide }),
   )
   swirl.position.y = cy
   g.add(swirl)

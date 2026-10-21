@@ -1,5 +1,5 @@
 import { Clock, Group, PCFSoftShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer } from 'three'
-import { CAMERA, GRAPHICS_PRESETS, SPAWN, SPAWN_FACING, STREET_ZONES, TUTORIAL } from './config.js'
+import { CAMERA, GRAPHICS_PRESETS, SNOW, SPAWN, SPAWN_FACING, STREET_ZONES, TUTORIAL, WORLD, WORLDS } from './config.js'
 import * as bloxity from './bloxity.js'
 import { inputState, install as installInput } from './input.js'
 import { createTouchControls } from './touch.js'
@@ -8,7 +8,8 @@ import { createHud, formatNumber } from './hud.js'
 import { createLoginButton } from './login.js'
 import { player, resetPlayer, step as stepPlayer } from './player.js'
 import { syncYawToPlayer, update as updateCamera } from './camera.js'
-import { createFog, createGround, createLights, createSky } from './world.js'
+import { createFog, createGround, createLights, createSky, createSnowfall } from './world.js'
+import { restoreCarry } from './worlds.js'
 import { createMap } from './map.js'
 import { buildDefaultCharacter, loadBaseCharacter } from './avatar/character.js'
 import { applyProportions, attachEquippedAccessories } from './avatar/loader.js'
@@ -36,6 +37,7 @@ installViewport() // html.compact / --W / --H before any HUD is built
 bloxity.init()
 net.init() // waits for auth itself; the game never waits on the server
 initDaily() // the daily-reward calendar: the server's for a signed-in player, else this browser's
+const arrivedFrom = restoreCarry() // progress handed over by the portal, after a world change (worlds.js)
 initSfx() // sound wakes on the first click or key (browsers allow nothing before)
 resetPlayer(SPAWN, SPAWN_FACING)
 syncYawToPlayer()
@@ -61,6 +63,8 @@ const itemsUi = createItemsUi(hud.root) // the Items tile (or I): planes to equi
 const dailyUi = createDailyUi(hud.root) // the calendar button (top right) and Daily Rewards window
 createLoginButton() // "Log in with Bloxity" while signed out
 rewardWindow.open = () => dailyUi.toggle(true) // E at the Free Reward
+// Through the portal: say where we came out.
+if (arrivedFrom) hud.showPopup(WORLD === 2 ? `${WORLDS[2].icon} ${WORLDS[2].name}` : '🏠 World 1', WORLD === 2 ? 'World 2' : 'Back in the Lobby', 'good')
 
 const scene = new Scene()
 scene.fog = createFog()
@@ -81,6 +85,8 @@ const map = createMap()
 scene.add(map.root)
 const lights = createLights()
 scene.add(lights.hemi, lights.sun, lights.sun.target)
+const snowfall = SNOW.enabled ? createSnowfall() : null // the Ice World's falling snow
+if (snowfall) scene.add(snowfall.object)
 
 // --- Player avatar ----------------------------------------------------------
 // Always the game's own character (player.glb, or the procedural fallback). A
@@ -237,6 +243,7 @@ renderer.setAnimationLoop(() => {
   const focus = tracked ? tracked.position : player.position
   lights.follow(focus.x, focus.z)
   sky.position.set(camera.position.x, 0, camera.position.z) // the dome is finite; keep the camera inside it
+  snowfall?.update(dt, camera)
   showFlight(dt)
   const tutorial = stepTutorial(dt)
   hud.setQuest(tutorial)

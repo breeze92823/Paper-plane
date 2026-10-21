@@ -51,6 +51,9 @@ export const game = {
   // The onboarding quest (tutorial.js): 0 Power, 1 Wins, 2 new plane, 3 level 20, 4 rebirth,
   // 5 done. Only ever moves forward, and is saved, so a returning player resumes it.
   tutorialStep: 0,
+  // Been through the portal to the Ice World (worlds.js): from then on it lets this player
+  // in whatever their Power. Saved; never goes back to false.
+  world2Unlocked: false,
   // Whether we know yet if this player has a save (net.js): true once the server's
   // `progress`/`noProgress` reply arrives, or there is nothing to wait for (guest, no server,
   // timeout). The tutorial stays hidden until then, so a returning player never sees step 0 flash.
@@ -280,6 +283,10 @@ export function skipTutorial() {
   if (game.tutorialStep < TUTORIAL.doneStep) set({ tutorialStep: TUTORIAL.doneStep, tutorialResumedDone: true })
 }
 
+export function unlockWorld2() {
+  if (!game.world2Unlocked) set({ world2Unlocked: true })
+}
+
 export function markProgressKnown() {
   if (!game.progressKnown) set({ progressKnown: true })
 }
@@ -306,6 +313,7 @@ export function hydrate(d) {
     furthestZone: clamp(Math.floor(num(d.furthestZone, game.furthestZone)), 0, STREET_ZONES.length - 1),
     ownedPlanes,
     autoThrowOwned: game.autoThrowOwned || d.autoThrowOwned === true,
+    world2Unlocked: game.world2Unlocked || d.world2Unlocked === true,
     equippedPlane: ownedPlanes.includes(d.equippedPlane) ? d.equippedPlane : 0,
     ...hydratePets(d),
     ...hydrateX2(d),

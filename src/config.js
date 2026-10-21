@@ -7,6 +7,29 @@ export const GAME_TITLE = 'Paper Plane'
 // Forces the Bloxity SDK and avatar CDN to be treated as unavailable (see .env.example).
 export const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
 
+// --- Worlds (worlds.js) --------------------------------------------------------
+// World 1 is the lobby and street as laid out below. World 2, the Ice World, is the same
+// layout and the same game re-dressed in snow and ice (the ICE_* overrides below), with its
+// own decor (iceWorld.js) and its own multiplayer room. A page builds one world, fixed at
+// load: worlds.js travels by reloading with sessionStorage naming the destination, and only
+// once the portal has let the player through (`unlockKey`), so a hand-edited key can't skip it.
+export const WORLDS = {
+  storageKey: 'paperPlane.world', // '2' while this tab is in the Ice World
+  unlockKey: 'paperPlane.world2', // '1' once this tab went through the portal
+  carryKey: 'paperPlane.carry', // progress handed across the reload (worlds.js)
+  saveWaitMs: 2_500, // longest a signed-in player waits for the final save before travelling
+  2: { name: 'Ice World', icon: '❄️', power: 2_500_000 },
+}
+function readWorld() {
+  try {
+    return sessionStorage.getItem(WORLDS.storageKey) === '2' && sessionStorage.getItem(WORLDS.unlockKey) === '1' ? 2 : 1
+  } catch {
+    return 1 // storage blocked: always the first world
+  }
+}
+export const WORLD = readWorld()
+const ICE = WORLD === 2
+
 // --- Multiplayer (net.js, remotePlayers.js) -----------------------------------
 // The game is single-player-complete: a slow or absent server only means playing solo.
 // Paper-plane-backend deploys to two Bloxity Legion channels (`dev` -> dev, `main` ->
@@ -61,8 +84,9 @@ export const COLORS = {
   zenith: '#4aa6ee',
   grass: '#4cc23e',
   grassDark: '#3aa830',
+  ...(ICE && { horizon: '#dff3ff', zenith: '#6aaee6', grass: '#eaf6ff', grassDark: '#d3e9f7' }),
 }
-export const FOG = { near: 90, far: 260 }
+export const FOG = ICE ? { near: 70, far: 230 } : { near: 90, far: 260 }
 export const LIGHT = {
   sunColor: '#fff2d6',
   sunIntensity: 2.4,
@@ -72,6 +96,44 @@ export const LIGHT = {
   hemiSky: '#e4f1ff',
   hemiGround: '#b9a98a',
   hemiIntensity: 1.1,
+  // Snow throws back a cold, bright light: a whiter sun, a blue bounce.
+  ...(ICE && { sunColor: '#f2f8ff', sunIntensity: 2.1, hemiSky: '#eef6ff', hemiGround: '#a9c8e0', hemiIntensity: 1.2 }),
+}
+
+// Waterfalls behind the eggs (textures.js waterfallTexture, map.js): colours and how fast
+// the texture scrolls, m/s. In the Ice World they're frozen, barely creeping.
+export const WATERFALL = ICE
+  ? { base: '#bfeeff', light: 'rgba(255,255,255,0.9)', dark: 'rgba(110,190,235,0.55)', flow: 0.12 }
+  : { base: '#4fc8ff', light: 'rgba(255,255,255,0.75)', dark: 'rgba(30,140,230,0.6)', flow: 1.4 }
+
+// Falling snow around the camera (world.js createSnowfall), Ice World only.
+export const SNOW = { enabled: ICE, flakes: 1400, box: 70, height: 40, fall: [1.2, 2.6], drift: 0.6, size: 0.18 }
+
+// The Ice World's lobby palette over World 1's: snow for grass, ice-blue cliffs, snowy pine
+// tiers (leafLight), frosted stone, cold lamps.
+const ICE_PALETTE = {
+  grass: '#eef7fd',
+  grassAlt: '#e3f1fa',
+  grassTop: '#f7fbff',
+  dirt: '#9fcbe8',
+  plaza: '#dceffc',
+  plazaPath: '#acdcf6',
+  plazaEdge: '#6eb3dd',
+  field: '#e8f5fd',
+  road: '#6a7a8e',
+  sidewalk: '#f6fbff',
+  stone: '#7d90a8',
+  trimBlue: '#3aa3ec',
+  chevron: '#3fa9f5',
+  arrowEdge: '#9ab8cc',
+  trunk: '#6b4a33',
+  leaf: '#2f7d5a',
+  leafLight: '#f4fbff',
+  water: '#9fe2ff',
+  lamp: '#2f3b4a',
+  lampLight: '#c4f0ff',
+  eggBand: '#3aa3ec',
+  waterfall: '#c4efff',
 }
 
 // The lobby's palette (map.js, props.js, terrain.js).
@@ -115,6 +177,7 @@ export const PALETTE = {
   board: '#1d2a4a',
   eggBand: '#2c8cec',
   waterfall: '#5fd0ff',
+  ...(ICE && ICE_PALETTE),
 }
 
 // Lobby layout, metres. North (-Z) is the throw area and the field up to the Neighbourhood
@@ -204,7 +267,7 @@ export const MAP = {
     { x: -44.5, z: 1.5, name: 'Golden', power: '+490', wins: '14K', plane: '#ffe14d', frame: true },
     { x: -44.5, z: -5, name: 'Ruby', power: '+1.1K', wins: '35K', plane: '#ff5c7a', frame: true },
   ],
-  world2: { x: -13, z: -19 },
+  world2: { x: -13, z: -19 }, // the portal (PORTAL says where it leads)
   demonEgg: { x: 13, z: -17 },
   // Rebirth training pads: a row of short raised pads, north to south (first at z0, then
   // every `spacing`), each from x0 to x1 on a light-blue studded base, with its prize on a
@@ -260,6 +323,27 @@ export const MAP = {
     { x: -18, w: 7, faces: [[43.7, 0, 15], [51.7, 15, 20], [59.7, 20, 25]] },
     { x: 4, w: 2.4, faces: [[51.7, 15, 20]] },
   ],
+}
+// Snow on every Ice World roof up the field.
+if (ICE) MAP.houses = MAP.houses.map((h) => ({ ...h, roofColor: '#f4fbff' }))
+
+// Where the lobby portal (MAP.world2) leads, and what it asks (eggs.js, worlds.js): World 1's
+// goes on to the Ice World for WORLDS[2].power Power (once through, it stays open, saved as
+// world2Unlocked; free with VITE_DEV_MODE, for testing); the Ice World's goes home for free.
+// `swirl` colours its spinning centre.
+export const PORTAL = ICE
+  ? { to: 1, power: 0, prompt: 'Back to World 1', title: '🌐 World 1', sub: '🏠 Back to the Lobby', subColor: '#7dff6a', swirl: ['#1f8f3a', '#b6ff9a'] }
+  : { to: 2, power: DEV_MODE ? 0 : WORLDS[2].power, prompt: 'Enter World 2', title: '🌐 World 2', sub: '💪 Needs 2.5M Power', subColor: '#ffb01f', swirl: ['#1d4fd8', '#9fe6ff'] }
+
+// The Ice World's own decor around the lobby (iceWorld.js), on flat ground clear of every
+// path, pad and prop: [x, z, yaw] (yaw turns the front, +Z, toward the plaza) and, for
+// clusters, a scale. Each gets a collider sized to it.
+export const ICE_DECOR = {
+  igloos: [[-41, -21, 0.4], [-51, 34, Math.PI - 0.3], [-36, -79, Math.PI / 2]],
+  snowmen: [[-30, -22, 0.3], [-49, -24, 0.6], [-27, 34, Math.PI], [-18, -62, Math.PI / 2], [18, -77, -Math.PI / 2], [-18, -95, Math.PI / 2]],
+  penguins: [[-33, 33, Math.PI], [-35, 35.2, Math.PI + 0.4], [-31.4, 35.4, Math.PI - 0.5], [-41, 33.5, Math.PI + 0.2], [-55, -16, 1], [-56.5, -18, 1.3]],
+  crystals: [[-24.5, -25, 1.1], [-58, -22, 1.4], [-20, 37, 1], [-44, 36.5, 0.8], [40, -51, 1.2], [-37, -93, 1], [37, -92, 1.3], [18, -88, 0.8]],
+  snowPiles: [[-34, -26.5, 1], [-46, -16.5, 0.8], [-38, 37.5, 1.1], [-57, 37, 0.9], [18, -64, 0.8], [-18, -78, 0.9]],
 }
 
 // --- Tutorial (tutorial.js) --------------------------------------------------------
@@ -539,7 +623,9 @@ export const STREET = {
   endPast: 50, // m of street past the far end before the closing wall: room for the portal
   // The giant World 2 portal at the far end of the Sky Port, facing back down the street,
   // `back` m short of the closing wall (clear of where a full-length throw skids to a stop).
-  portal: { scale: 4.5, back: 15, title: '🌐 World 2', sub: '💪 Needs 2.5M Power' },
+  portal: ICE
+    ? { scale: 4.5, back: 15, title: '🌐 World 3', sub: '🔒 Coming Soon', subColor: '#9fe6ff', swirl: ['#5a1fd8', '#e0b0ff'] }
+    : { scale: 4.5, back: 15, title: '🌐 World 2', sub: '💪 Needs 2.5M Power', subColor: '#ffb01f', swirl: ['#1d4fd8', '#9fe6ff'] },
   runwayLights: 8, // m between the Sky Port's runway edge lights
 }
 
@@ -549,7 +635,23 @@ export const STREET = {
 // hand-built Neighbourhood field and its gate (map.js); street.js carries its colours on.
 // Colours: road + lane dashes, verge (between road and sidewalk), sidewalk, lots (beyond
 // the fences, a checker pair), walls (top, side), gate trim.
-export const STREET_ZONES = [
+// The Ice World's street: the same ten stretches (ids, so streetProps.js's ICE_THEMES, and
+// distances), each re-dressed in snow and ice. The first carries the lobby field on, so it
+// takes its colours from PALETTE like World 1's.
+const ICE_STREET_ZONES = [
+  { id: 'neighbourhood', label: 'Frost Village', icon: '🏘️', startD: 0, road: PALETTE.road, dash: '#ffffff', verge: PALETTE.field, sidewalk: PALETTE.sidewalk, lot: [PALETTE.grass, PALETTE.grassAlt], wall: [PALETTE.grassTop, PALETTE.dirt], trim: PALETTE.trimBlue },
+  { id: 'main', label: 'Glacier Market', icon: '🧊', startD: 250, road: '#56657a', dash: '#bfefff', verge: '#d5e6f2', sidewalk: '#eef4fa', lot: ['#dfeaf3', '#d4e2ee'], wall: ['#bcdcf0', '#7fa9c9'], trim: '#2f8fd8' },
+  { id: 'park', label: 'Frozen Park', icon: '⛸️', startD: 550, road: '#6a7684', dash: '#ffffff', verge: '#f0f8fd', sidewalk: '#e2eef6', lot: ['#f2f9fe', '#e6f2fa'], wall: ['#f6fbff', '#8fbcd8'], trim: '#46b7e0' },
+  { id: 'downtown', label: 'Ice City', icon: '🏙️', startD: 880, road: '#3a4250', dash: '#ffffff', verge: '#b9c9d8', sidewalk: '#d3e0eb', lot: ['#a9bccd', '#9fb3c5'], wall: ['#8fa9c4', '#5a7290'], trim: '#5aa0e0' },
+  { id: 'seaside', label: 'Penguin Bay', icon: '🐧', startD: 1240, road: '#7d93a8', dash: '#ffffff', verge: '#dff3ff', sidewalk: '#c9e3f2', lot: ['#e9f7ff', '#dcf0fb'], wall: ['#ffffff', '#a8d8f0'], trim: '#1fb5d6' },
+  { id: 'snowy', label: 'Blizzard Pass', icon: '🌨️', startD: 1640, road: '#8a98a8', dash: '#ffffff', verge: '#ffffff', sidewalk: '#e9f2f8', lot: ['#fbfdff', '#eef5fa'], wall: ['#ffffff', '#c9dde9'], trim: '#7fc4ea' },
+  { id: 'spooky', label: 'Yeti Woods', icon: '👣', startD: 2060, road: '#3a4458', dash: '#9fe6ff', verge: '#4a5a72', sidewalk: '#6b7d95', lot: ['#3f4c63', '#37435a'], wall: ['#2a3448', '#1f2738'], trim: '#9fe6ff' },
+  { id: 'candy', label: 'Candy Cane Lane', icon: '🍬', startD: 2500, road: '#ff9fc8', dash: '#ffffff', verge: '#ffe3f0', sidewalk: '#fff6fb', lot: ['#ffeaf3', '#ffdcea'], wall: ['#ffffff', '#ff9fc8'], trim: '#e8323a' },
+  { id: 'neon', label: 'Aurora Lights', icon: '🌌', startD: 2960, road: '#101a2a', dash: '#4bffb0', verge: '#1c2c44', sidewalk: '#22406b', lot: ['#16243a', '#121e32'], wall: ['#1a2f52', '#10203a'], trim: '#4bffb0' },
+  { id: 'skyport', label: 'Polar Port', icon: '✈️', startD: 3400, runway: true, road: '#3a4250', dash: '#ffffff', verge: '#c9d6e2', sidewalk: '#dfe8f0', lot: ['#e9f1f7', '#dfe9f1'], wall: ['#e9f1f7', '#8fa9c4'], trim: '#ff8a1f' },
+]
+
+export const STREET_ZONES = ICE ? ICE_STREET_ZONES : [
   { id: 'neighbourhood', label: 'Neighbourhood', icon: '🏠', startD: 0, road: PALETTE.road, dash: '#ffffff', verge: PALETTE.field, sidewalk: PALETTE.sidewalk, lot: [PALETTE.grass, PALETTE.grassAlt], wall: [PALETTE.grassTop, PALETTE.dirt], trim: PALETTE.trimBlue },
   { id: 'main', label: 'Main Street', icon: '🛍️', startD: 250, road: '#4a4f5a', dash: '#ffd23a', verge: '#c9c2b4', sidewalk: '#efe4d2', lot: ['#d9cdb8', '#cfc1a8'], wall: ['#d07a55', '#a3523a'], trim: '#e0573a' },
   { id: 'park', label: 'Park Avenue', icon: '🌳', startD: 550, road: '#5a5f63', dash: '#ffffff', verge: '#5fcf4a', sidewalk: '#e6e0c8', lot: ['#4fbf3f', '#46b237'], wall: ['#3e9a35', '#7a5530'], trim: '#2f9e44' },

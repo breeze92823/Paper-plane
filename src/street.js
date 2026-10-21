@@ -127,14 +127,15 @@ function runway(kitAt, d0, d1) {
   }
 }
 
-// The giant World 2 portal standing at the far end, facing back down the street, with its sign.
+// The giant portal standing at the far end (World 2's, or in the Ice World a closed World 3),
+// facing back down the street, with its sign.
 function endPortal(animate) {
   const p = STREET.portal
-  const portal = world2Portal()
+  const portal = world2Portal(p.swirl)
   portal.group.scale.setScalar(p.scale)
   portal.group.position.z = zAt(END_D) + p.back
   animate.push((t) => (portal.swirl.rotation.z = -t * 0.8))
-  const sign = makeSign([{ text: p.title, color: '#ffffff', size: 64 }, { text: p.sub, color: '#ffb01f', size: 40 }], 7)
+  const sign = makeSign([{ text: p.title, color: '#ffffff', size: 64 }, { text: p.sub, color: p.subColor, size: 40 }], 7)
   sign.position.set(0, 7.1 * p.scale + 4, portal.group.position.z) // above the crystal ring
   return [portal.group, sign]
 }
