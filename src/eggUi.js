@@ -9,7 +9,7 @@
 //    unequip, Equip Best, and a delete mode.
 import { EGG_SHOP, EGGS, MAP, RARITIES, RARITY_ORDER } from './config.js'
 import { FONT, formatMultiplier, formatNumber, outline, u } from './hud.js'
-import { closeEgg, eggMessage, eggState, openEgg, subscribeEggs } from './eggs.js'
+import { closeEgg, eggMessage, eggState, openEgg, spotPrompt, subscribeEggs } from './eggs.js'
 import { finishHatch, toggleAuto, tryHatch } from './hatch.js'
 import { petInfo, petMultiplier, petSlots, sortedPets } from './pets.js'
 import { deletePet, equipBest, game, subscribe, toggleEquip } from './store.js'
@@ -324,9 +324,9 @@ export function createEggUi(root) {
 
   // --- Wiring -----------------------------------------------------------------------
   function render() {
-    const near = eggState.near && EGG_SHOP[eggState.near]
+    const near = eggState.near
     prompt.hidden = !near || !!eggState.open
-    if (near) prompt.querySelector('span').textContent = `Open ${near.name}`
+    if (near) prompt.querySelector('span').textContent = spotPrompt(near)
     if (eggState.open !== shownEgg) {
       if (eggState.open) sfx.open()
       else sfx.close()

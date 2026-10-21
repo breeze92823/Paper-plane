@@ -182,6 +182,7 @@ Past the field (z −112) the road carries straight on north for 3.5 km, through
   - **Ring:** 14 ice crystals in a 2.5 m radius, centred 3.1 m up, with a few loose crystals at the base.
   - **Swirl:** spins inside the ring, with a soft blue glow behind.
   - **Sign:** at 7.6 m: *🌐 World 2 · 💪 Needs 2.5M Power*.
+  - **E** (within 4.5 m) travels to World 2 with 2.5M Power, or for free once the account has been through before (`world2Unlocked`). See *World 2: the Ice World* below.
 - **Demon Egg**, at (13, −17):
   - **Base:** a 6.5 m light-blue studded pad and a dark-red stepped pedestal.
   - **Egg:** dark, with glowing lava cracks; it turns and bobs, with flickering flame cones on top.
@@ -298,6 +299,17 @@ Three boards in a row behind the Egg Row at z 37, facing the plaza (`MAP.leaderb
 
 ---
 
+## World 2: the Ice World
+
+The same lobby and street, same layout and same game, re-dressed in snow and ice. A page builds one world: `src/worlds.js` travels by reloading the tab with `sessionStorage` naming the destination, carrying the player's progress across (a signed-in player's save is written to the server first).
+
+- **Look:** snow ground and hill tops, ice-blue cliffs, snowy pine tiers, snow on every roof, a frozen (barely creeping) waterfall, cold light and falling snow round the camera. All in `config.js`: `ICE_PALETTE`, the `ICE &&` overrides on `COLORS`/`LIGHT`/`FOG`, `WATERFALL`, `SNOW`.
+- **Lobby portal:** green swirl, *🌐 World 1 · 🏠 Back to the Lobby*, always free (`PORTAL`).
+- **Lobby decor** (`ICE_DECOR`, built by `src/iceWorld.js`, all with colliders): igloos, snowmen, penguins, ice-crystal clumps and snow piles north-west of the Plane Hall, along the south strip behind the hall and up the field beside the houses.
+- **Street** (`ICE_STREET_ZONES`, themes `ICE_THEMES` in `src/streetProps.js`, same ids and distances as World 1): Frost Village, Glacier Market, Frozen Park, Ice City, Penguin Bay, Blizzard Pass, Yeti Woods, Candy Cane Lane, Aurora Lights, Polar Port. New pieces: `snowPine`, `igloo`, `penguin`, `iceCrystal`, `snowPile`, `iceberg`, `rink`, `iceSculpture`, `yeti`, `frostTree`.
+- **End portal:** *🌐 World 3 · 🔒 Coming Soon*.
+- **Multiplayer:** each world has its own room (backend `app.config.ts` `filterBy(["world"])`); saves and leaderboards are shared.
+
 ## Movement and collision
 
 - **Step-up height:** the player walks up any ledge of **0.6 m** or less: the hall steps, pad rims, egg stage, training base and pads, sidewalks, the basketball court and the walkway.
@@ -339,6 +351,8 @@ Three boards in a row behind the Egg Row at z 37, facing the plaza (`MAP.leaderb
 | `src/leaderboards.js` | The three leaderboards behind the Egg Row and their live rows (from `src/net.js`) |
 | `src/terrain.js` | The terraced hills, cliffs and hill trees |
 | `src/textures.js` | Canvas-painted textures: studs, facades, lava, gold, rainbow, neon, swirl, egg shells, odds boards, water, court, clock, signs |
-| `src/world.js` | Sky, ground, lights, fog |
+| `src/world.js` | Sky, ground, lights, fog, the Ice World's snowfall |
+| `src/worlds.js` | Travel between World 1 and the Ice World through the lobby portal |
+| `src/iceWorld.js` | The Ice World's lobby decor (`ICE_DECOR`) |
 
 The on-screen HUD (Auto Throw, Pets/Rebirth/Items, boosts, power bar) is separate (`src/hud.js`) and isn't part of the map.

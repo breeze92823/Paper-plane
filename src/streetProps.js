@@ -6,10 +6,12 @@
 //
 // Builders work in a local frame: base on y = 0, centred on x = z = 0, the front (door,
 // shop window) facing +Z, which street.js turns toward the road.
-import { BoxGeometry, Color, ConeGeometry, CylinderGeometry, ExtrudeGeometry, Float32BufferAttribute, Matrix4, Shape, SphereGeometry, TorusGeometry, Vector2 } from 'three'
+import { BoxGeometry, Color, ConeGeometry, CylinderGeometry, ExtrudeGeometry, Float32BufferAttribute, Matrix4, OctahedronGeometry, Shape, SphereGeometry, TorusGeometry, Vector2 } from 'three'
+import { WORLD } from './config.js'
 
 const TAU = Math.PI * 2
 const _c = new Color()
+const _s = new Matrix4()
 
 // Collects world-space, non-indexed, vertex-coloured geometry: `solid` for lit parts,
 // `glow` for parts drawn unlit at full brightness. `at` sets the frame later parts go in.
@@ -20,8 +22,9 @@ export class Kit {
     this.frame = new Matrix4()
   }
 
-  at(x, y, z, yaw = 0) {
+  at(x, y, z, yaw = 0, scale = 1) {
     this.frame.makeRotationY(yaw).setPosition(x, y, z)
+    if (scale !== 1) this.frame.multiply(_s.makeScale(scale, scale, scale))
     return this
   }
 
@@ -112,6 +115,12 @@ export function lamp(k, { pole, head, light }) {
   k.box(0.42, 0.55, 0.42, 0, 4.67, 0, light, true)
   k.cone(0.42, 0.35, 0, 5.22, 0, head, 4)
 }
+
+// Ice World colours shared by its kinds.
+const SNOW = '#fbfdff'
+const ICE_SHADE = '#cfe3f0'
+const ICE_GREEN = '#2f7d5a'
+const ICE_CRYSTALS = ['#bfeeff', '#9fe2ff', '#d6f5ff', '#8fd0f5']
 
 // --- Kinds ------------------------------------------------------------------------------
 // Each: size(r, theme) -> { w (frontage along the street), d (depth) }, then
@@ -435,13 +444,153 @@ export const KINDS = {
       for (let i = 0; i < 4; i++) k.geo(new CylinderGeometry(0.42 - i * 0.07, 0.49 - i * 0.07, 0.5, 8, 1, true).rotateZ(Math.PI / 2).translate(0.35 + i * 0.5, 4.8, 0), i % 2 ? '#ffffff' : '#ff6a1a')
     },
   },
+
+  // --- Ice World (ICE_THEMES; iceWorld.js builds the lobby's from these too) ---------------
+  // Pine under snow: dark needles with white tiers between, a snow cap on top.
+  snowPine: {
+    size: () => ({ w: 5, d: 5 }),
+    build(k, r) {
+      const s = between(r, 0.9, 1.35)
+      const x = between(r, -0.8, 0.8)
+      const z = between(r, -2, 2)
+      pine(k, x, z, s, [ICE_GREEN, SNOW], '#5a3d2a')
+      k.box(0.6 * s, 0.45 * s, 0.6 * s, x, 1.7 * s + (1.4 + 1.3 + 1.2) * s * 0.82 + 0.9 * s, z, SNOW)
+    },
+  },
+  // Snow-block dome with a tunnel out of the front (+Z) and a dark doorway.
+  igloo: {
+    size: () => ({ w: 7, d: 7 }),
+    build(k, r, s, t) {
+      const R = 2.8
+      k.geo(new SphereGeometry(R, 14, 7, 0, TAU, 0, Math.PI / 2), SNOW)
+      for (const y of [0.9, 1.8, 2.45]) {
+        const rr = Math.sqrt(R * R - y * y) + 0.02
+        k.geo(new TorusGeometry(rr, 0.05, 4, 24).rotateX(Math.PI / 2).translate(0, y, 0), ICE_SHADE)
+      }
+      k.box(1.9, 1.7, 2.2, 0, 0, R - 0.2, SNOW)
+      k.box(2.1, 0.25, 2.4, 0, 1.7, R - 0.2, ICE_SHADE)
+      k.box(1.1, 1.3, 0.1, 0, 0, R + 0.92, '#1d3550')
+      if (t?.glowDoor) k.box(0.6, 0.5, 0.06, 0, 0.3, R + 0.98, '#ffcf6a', true)
+    },
+  },
+  penguin: {
+    size: () => ({ w: 2.4, d: 2.4 }),
+    build(k, r) {
+      const s = between(r, 0.8, 1.15)
+      const z = between(r, -0.4, 0.6)
+      k.ball(0.55 * s, 0, 0.75 * s, z, '#1c2230', false, 1.35)
+      k.ball(0.42 * s, 0, 0.7 * s, z + 0.22 * s, '#f6f8fb', false, 1.25)
+      k.ball(0.36 * s, 0, 1.65 * s, z + 0.02 * s, '#1c2230')
+      for (const ex of [-0.13, 0.13]) k.ball(0.07 * s, ex * s, 1.72 * s, z + 0.3 * s, '#ffffff')
+      k.geo(new ConeGeometry(0.09 * s, 0.3 * s, 6).rotateX(Math.PI / 2).translate(0, 1.6 * s, z + 0.45 * s), '#ff9a1f')
+      for (const sx of [-1, 1]) {
+        const flipper = new BoxGeometry(0.1 * s, 0.6 * s, 0.3 * s).rotateZ(sx * 0.35).translate(sx * 0.55 * s, 0.85 * s, z)
+        k.geo(flipper, '#1c2230')
+        k.box(0.22 * s, 0.08 * s, 0.32 * s, sx * 0.17 * s, 0, z + 0.2 * s, '#ff9a1f')
+      }
+    },
+  },
+  // A clump of glassy ice crystals, the tallest in the middle; `t.crystalGlow` lights a core.
+  iceCrystal: {
+    size: () => ({ w: 4, d: 4 }),
+    build(k, r, s, t) {
+      const n = 3 + Math.floor(r() * 3)
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * TAU + r()
+        const d = i === 0 ? 0 : between(r, 0.6, 1.2)
+        const h = i === 0 ? between(r, 3, 4.2) : between(r, 1.4, 2.6)
+        const c = new OctahedronGeometry(0.5, 0).scale(0.9, h, 0.9).rotateZ(i === 0 ? 0 : (r() - 0.5) * 0.6).translate(Math.cos(a) * d, h * 0.42, 1 + Math.sin(a) * d)
+        k.geo(c, pick(r, ICE_CRYSTALS))
+      }
+      if (t?.crystalGlow) k.box(0.35, 0.35, 0.35, 0, 1.4, 1, pick(r, t.crystalGlow), true)
+    },
+  },
+  snowPile: {
+    size: () => ({ w: 3.5, d: 3 }),
+    build(k, r) {
+      for (let i = 0; i < 3; i++) k.ball(between(r, 0.7, 1.2), between(r, -0.9, 0.9), 0.1, 1 + between(r, -0.5, 0.5), i % 2 ? SNOW : '#eaf4fb', false, 0.55)
+    },
+  },
+  // Chunky floe of stacked ice on a patch of dark water.
+  iceberg: {
+    size: () => ({ w: 7, d: 7 }),
+    build(k, r) {
+      k.box(6.4, 0.08, 6.4, 0, 0, 0, '#2f7fb8')
+      const h = between(r, 3, 5.5)
+      k.box(4.2, h * 0.45, 3.8, 0, 0, 0, '#dff4ff')
+      k.box(3, h * 0.35, 2.8, between(r, -0.5, 0.5), h * 0.45, 0, SNOW)
+      k.cone(1.3, h * 0.45, between(r, -0.4, 0.4), h * 0.8, 0, '#eaf8ff', 5)
+      k.box(4.3, 0.5, 3.9, 0, 0.1, 0, '#9fd8f5')
+    },
+  },
+  // Frozen pond: a snowbank round a pale ice sheet, hockey lines, two little goals.
+  rink: {
+    size: (r) => ({ w: between(r, 12, 15), d: between(r, 8, 10) }),
+    build(k, r, { w, d }) {
+      k.box(w, 0.35, d, 0, 0, 0, SNOW)
+      k.box(w - 1, 0.06, d - 1, 0, 0.32, 0, '#c9efff')
+      k.box(0.2, 0.02, d - 1.2, 0, 0.38, 0, '#e8323a')
+      for (const sx of [-1, 1]) {
+        k.box(0.15, 0.02, d - 1.2, sx * (w / 4), 0.38, 0, '#2c8cec')
+        k.box(0.15, 0.8, 1.6, sx * (w / 2 - 1.3), 0.38, 0, '#e8323a')
+      }
+    },
+  },
+  // An ice sculpture of a star on a snow plinth.
+  iceSculpture: {
+    size: () => ({ w: 4, d: 4 }),
+    build(k, r) {
+      k.box(1.8, 1, 1.8, 0, 0, 1, SNOW)
+      k.cyl(0.25, 0.4, 1.4, 0, 1, 1, '#cfefff', 6)
+      const pts = []
+      for (let i = 0; i < 10; i++) {
+        const rad = i % 2 ? 0.45 : 1
+        const a = (i / 10) * TAU + Math.PI / 2
+        pts.push(new Vector2(Math.cos(a) * rad, Math.sin(a) * rad))
+      }
+      k.geo(new ExtrudeGeometry(new Shape(pts), { depth: 0.3, bevelEnabled: false }).translate(0, 3.3, 0.85), pick(r, ICE_CRYSTALS))
+    },
+  },
+  // A big white yeti with a blue face, arms hanging.
+  yeti: {
+    size: () => ({ w: 4, d: 4 }),
+    build(k, r) {
+      const fur = '#f2f6fa'
+      k.box(2, 2.4, 1.5, 0, 1.4, 1, fur)
+      k.box(1.4, 1.2, 1.2, 0, 3.8, 1, fur)
+      k.box(0.95, 0.7, 0.1, 0, 4, 1.62, '#7ab8e0')
+      for (const ex of [-0.22, 0.22]) k.box(0.16, 0.16, 0.08, ex, 4.25, 1.68, '#1d2433')
+      for (const sx of [-1, 1]) {
+        k.box(0.6, 2.2, 0.6, sx * 1.3, 1.6, 1, fur)
+        k.box(0.7, 1.4, 0.8, sx * 0.5, 0, 1, fur)
+      }
+    },
+  },
+  // Bare frosted tree: a dark trunk and branches, each tipped with snow.
+  frostTree: {
+    size: () => ({ w: 5, d: 5 }),
+    build(k, r) {
+      const bark = '#4a5568'
+      k.box(0.7, 4.5, 0.7, 0, 0, 0, bark)
+      k.box(0.8, 0.3, 0.8, 0, 4.5, 0, SNOW)
+      for (let i = 0; i < 4; i++) {
+        const lean = (i % 2 ? 1 : -1) * between(r, 0.6, 1)
+        const turn = r() * TAU
+        const y = 2.4 + i * 0.6
+        k.geo(new BoxGeometry(0.25, 2.2, 0.25).translate(0, 1.1, 0).rotateZ(lean).rotateY(turn).translate(0, y, 0), bark)
+        k.geo(new BoxGeometry(0.32, 0.3, 0.32).translate(0, 2.25, 0).rotateZ(lean).rotateY(turn).translate(0, y, 0), SNOW)
+      }
+    },
+  },
 }
+
 
 // --- Themes, by STREET_ZONES id --------------------------------------------------------
 // pick(roll) -> a KINDS name for the next front lot, gap [lo, hi] m between neighbours;
 // back: a row along the rear of the lots (pick, every [lo, hi] m) that fills the skyline in
 // front of the walls; lamp colours. The rest are colour lists the kinds choose from.
-export const ZONE_THEMES = {
+// World 1's; the Ice World's are ICE_THEMES, under the same ids.
+const LOBBY_THEMES = {
   neighbourhood: {
     pick: (roll) => (roll < 0.62 ? 'house' : roll < 0.8 ? 'oak' : roll < 0.92 ? 'pine' : 'hedge'),
     gap: [2, 5],
@@ -533,3 +682,104 @@ export const ZONE_THEMES = {
     lamp: { pole: '#5b6270', head: '#5b6270', light: '#ffffff' },
   },
 }
+
+// The Ice World's street, zone by zone under World 1's ids: snowed-in houses, igloos and
+// penguins, frozen parks, ice towers, a yeti wood, a snowy candy lane and an aurora night.
+const ICE_LAMP = { pole: '#2f3b4a', head: '#2f3b4a', light: '#c4f0ff' }
+const ICE_THEMES = {
+  neighbourhood: {
+    pick: (roll) => (roll < 0.55 ? 'house' : roll < 0.78 ? 'snowPine' : roll < 0.9 ? 'snowman' : 'igloo'),
+    gap: [2, 5],
+    back: { pick: () => 'snowPine', every: [3, 8] },
+    walls: ['#86c9ec', '#f4efe6', '#f6c9d2', '#fff1c9', '#e9f3f6', '#c9e8b5'],
+    roofs: [SNOW, '#f4fbff'],
+    chimney: '#6e4a3a',
+    hedge: '#eef6fb',
+    glass: '#ffe58a',
+    lamp: ICE_LAMP,
+  },
+  main: {
+    pick: (roll) => (roll < 0.66 ? 'shop' : roll < 0.8 ? 'kiosk' : roll < 0.92 ? 'iceSculpture' : 'snowman'),
+    gap: [0.5, 2],
+    back: { pick: (roll) => (roll < 0.7 ? 'shop' : 'snowPine'), every: [0, 2] },
+    walls: ['#bcdcf0', '#e8eef5', '#9fc3d6', '#f0f6fb', '#c9b8e8', '#a8d8e8'],
+    awnings: ['#2f8fd8', '#e8323a', '#7a5cd8', '#1fb5d6'],
+    parapet: SNOW,
+    glass: '#bfefff',
+    lamp: { pole: '#2f6b8a', head: '#2f6b8a', light: '#e6fbff' },
+  },
+  park: {
+    pick: (roll) => (roll < 0.34 ? 'snowPine' : roll < 0.48 ? 'oak' : roll < 0.6 ? 'rink' : roll < 0.72 ? 'snowman' : roll < 0.8 ? 'bench' : roll < 0.9 ? 'iceCrystal' : 'snowPile'),
+    gap: [1, 4],
+    back: { pick: (roll) => (roll < 0.6 ? 'snowPine' : 'oak'), every: [1, 4] },
+    leaves: [ICE_GREEN, SNOW],
+    lamp: { pole: '#f4f4f4', head: '#d9dde3', light: '#ffffff' },
+  },
+  downtown: {
+    pick: (roll) => (roll < 0.76 ? 'tower' : roll < 0.88 ? 'billboard' : 'iceCrystal'),
+    gap: [1, 3],
+    back: { pick: () => 'tower', every: [0, 2] },
+    walls: ['#8fa9c4', '#b8cde0', '#6d87a6', '#d3e2ef', '#5a7290', '#a9c4dc'],
+    glass: '#bfefff',
+    roofPlant: '#e9f1f7',
+    billboards: ['#33e0ff', '#9fe6ff', '#ff5c7a', '#4bffb0'],
+    lamp: { pole: '#5b6b80', head: '#5b6b80', light: '#e6fbff' },
+  },
+  seaside: {
+    pick: (roll) => (roll < 0.3 ? 'igloo' : roll < 0.62 ? 'penguin' : roll < 0.9 ? 'iceberg' : 'lighthouse'),
+    gap: [1, 4],
+    back: { pick: (roll) => (roll < 0.6 ? 'iceberg' : 'snowPine'), every: [2, 6] },
+    glowDoor: true,
+    lamp: { pole: '#5a6b80', head: '#3a4458', light: '#ffe58a' },
+  },
+  snowy: {
+    pick: (roll) => (roll < 0.48 ? 'house' : roll < 0.78 ? 'snowPine' : roll < 0.9 ? 'snowman' : 'snowPile'),
+    gap: [2, 5],
+    back: { pick: () => 'snowPine', every: [2, 6] },
+    walls: ['#c9563c', '#e8c27a', '#7fa7c9', '#f4efe6', '#8fbf8f'],
+    roofs: [SNOW, '#f4fbff'],
+    chimney: '#6e4a3a',
+    hedge: '#eef6fb',
+    glass: '#ffe58a',
+    lamp: { pole: '#22252b', head: '#22252b', light: '#ffd27a' },
+  },
+  spooky: {
+    pick: (roll) => (roll < 0.38 ? 'haunted' : roll < 0.64 ? 'frostTree' : roll < 0.82 ? 'yeti' : 'snowPile'),
+    gap: [2, 5],
+    back: { pick: () => 'frostTree', every: [3, 7] },
+    walls: ['#4a5a72', '#3b4860', '#5a6b80', '#2f3a50'],
+    roofs: ['#e9f1f7', '#cfdde8'],
+    glass: '#9fe6ff',
+    lamp: { pole: '#2a3448', head: '#2a3448', light: '#9fe6ff' },
+  },
+  candy: {
+    pick: (roll) => (roll < 0.45 ? 'gingerbread' : roll < 0.65 ? 'candycane' : roll < 0.82 ? 'lollipop' : 'gumdrop'),
+    gap: [1, 4],
+    back: { pick: (roll) => (roll < 0.5 ? 'candycane' : 'snowPine'), every: [2, 6] },
+    walls: ['#a8642f', '#c07a3f'],
+    roofs: [SNOW, '#fff0f6'],
+    sweets: ['#e8323a', '#ff4f9a', '#4fc3f0', '#7bdc6b', '#ffffff'],
+    glass: '#ffe58a',
+    lamp: { pole: '#ffffff', head: '#e8323a', light: '#fff0a8' },
+  },
+  neon: {
+    pick: (roll) => (roll < 0.66 ? 'tower' : roll < 0.84 ? 'neonSign' : 'iceCrystal'),
+    gap: [1, 3],
+    back: { pick: () => 'tower', every: [0, 2] },
+    walls: ['#14223a', '#1a2c4a', '#101a2e'],
+    neon: ['#4bffb0', '#33e0ff', '#b06cff', '#7dfff0'],
+    crystalGlow: ['#4bffb0', '#33e0ff', '#b06cff'],
+    roofPlant: '#1a2c4a',
+    lamp: { pole: '#14223a', head: '#14223a', light: '#4bffb0' },
+  },
+  skyport: {
+    pick: (roll) => (roll < 0.36 ? 'hangar' : roll < 0.58 ? 'airliner' : roll < 0.74 ? 'controlTower' : roll < 0.88 ? 'windsock' : 'snowPile'),
+    gap: [2, 5],
+    back: { pick: () => 'hangar', every: [1, 4] },
+    roofs: [SNOW, '#e9f1f7', '#cfdde8'],
+    liveries: ['#2c8cec', '#e8323a', '#1fb5d6', '#7a5cd8'],
+    lamp: { pole: '#5b6270', head: '#5b6270', light: '#ffffff' },
+  },
+}
+
+export const ZONE_THEMES = WORLD === 2 ? ICE_THEMES : LOBBY_THEMES

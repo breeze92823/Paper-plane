@@ -18,7 +18,7 @@ import {
   onProportionsChanged,
   subscribeAuth,
 } from './bloxity.js'
-import { NET } from './config.js'
+import { NET, WORLD } from './config.js'
 import { AVATAR_SLOTS, isEquipped } from './avatar/cdn.js'
 import { player } from './player.js'
 import { game, hydrate, markProgressKnown, subscribe as subscribeStore } from './store.js'
@@ -123,7 +123,9 @@ function statsPayload() {
   return { power: game.power, wins: game.wins, rebirths: game.rebirths, bestDistance: game.bestDistance, equippedPlane: game.equippedPlane }
 }
 
-function progressPayload() {
+// The durable half of the store, as saveProgress sends it (worlds.js carries it across a
+// world change too).
+export function progressPayload() {
   return {
     ...statsPayload(),
     furthestZone: game.furthestZone,
@@ -140,6 +142,7 @@ function progressPayload() {
     boosts: { ...game.boosts }, // daily-reward potions still running
     storedEggs: { ...game.storedEggs }, // the Items window's Eggs and Potions
     potions: { ...game.potions },
+    world2Unlocked: game.world2Unlocked, // been through the portal to the Ice World
   }
 }
 
@@ -154,7 +157,7 @@ let lastSnap = ''
 
 // The store tells every change (Auto Throw too), so filter to the fields we send.
 function onStoreChange(g) {
-  const snap = JSON.stringify([g.power, g.wins, g.rebirths, g.bestDistance, g.furthestZone, g.equippedPlane, g.ownedPlanes.length, g.nextPetId, g.pets.length, g.equipped, g.tutorialStep, g.boosts, g.autoThrowOwned, g.x2Owned, g.x2On, g.storedEggs, g.potions])
+  const snap = JSON.stringify([g.power, g.wins, g.rebirths, g.bestDistance, g.furthestZone, g.equippedPlane, g.ownedPlanes.length, g.nextPetId, g.pets.length, g.equipped, g.tutorialStep, g.boosts, g.autoThrowOwned, g.x2Owned, g.x2On, g.storedEggs, g.potions, g.world2Unlocked])
   if (snap === lastSnap) return
   lastSnap = snap
   if (!statsTimer) {
@@ -175,6 +178,34 @@ function onStoreChange(g) {
 // the real load. A later reattach under the SAME identity would otherwise clobber what
 // the player did locally during a blip.
 let hydratedFromServer = false
+
+// --- World travel (worlds.js) --------------------------------------------------
+// Sends the save now and resolves true once the server has written it (its `progressSaved`
+// reply), false straight away for a guest or offline, or after `ms` without a reply.
+let saveWaiters = []
+export function flushProgress(ms) {
+  if (!room || !getStableUserId()) return Promise.resolve(false)
+  clearTimeout(progressTimer)
+  progressTimer = 0
+  return new Promise((resolve) => {
+    const done = (ok) => {
+      clearTimeout(timer)
+      saveWaiters = saveWaiters.filter((w) => w !== done)
+      resolve(ok)
+    }
+    const timer = setTimeout(() => done(false), ms)
+    saveWaiters.push(done)
+    send('saveProgress', { ...progressPayload(), ack: true })
+  })
+}
+
+// This page started from progress carried over a world change, for `userId`: the server's
+// `progress` for that account is the same or older, so it's not loaded over it but sent the
+// carried numbers instead (in case the last save before travelling never landed).
+let carriedFor = ''
+export function adoptCarried(userId) {
+  carriedFor = userId
+}
 
 // --- Avatar + position relay ------------------------------------------------
 // The same recipe main.js dresses the local player with: the game's own character plus
@@ -335,6 +366,7 @@ async function connect() {
     // and the fallback once that recovery gives up (room.onLeave).
     const joined = await withTimeout(
       client.joinOrCreate(NET.room, {
+        world: WORLD, // the server keeps one room per world (app.config.ts filterBy)
         username: getDisplayName(),
         userId: getStableUserId(), // '' for a guest: nothing to load or save
         // Seeds PlayerState.avatar so others render us right from the first frame.
@@ -394,7 +426,15 @@ function attachRoom(joined) {
   room.onMessage('progress', (msg) => {
     if (hydratedFromServer) return
     hydratedFromServer = true
+    if (carriedFor && carriedFor === getStableUserId()) {
+      carriedFor = ''
+      sendProgressNow()
+      return
+    }
     hydrate(msg || {})
+  })
+  room.onMessage('progressSaved', (msg) => {
+    for (const done of [...saveWaiters]) done(msg?.saved !== false)
   })
   // A brand-new account has no save yet: keep playing on local progress, and the tutorial
   // can start at step 0 right away.
