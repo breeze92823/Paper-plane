@@ -1,3 +1,20 @@
-// Phones and tablets: a coarse primary pointer with no hover. Evaluated once.
+// Phones and tablets: a coarse primary pointer with no hover. Evaluated once; the HUD reads
+// `isCompact` live (it also covers small desktop windows). In dev, `?touch` forces the touch UI.
 const mq = (q) => typeof matchMedia === 'function' && matchMedia(q).matches
-export const isTouch = mq('(pointer: coarse)') && !mq('(hover: hover) and (pointer: fine)')
+const forced = import.meta.env.DEV && new URLSearchParams(location.search).has('touch')
+export const isTouch = forced || (mq('(pointer: coarse)') && !mq('(hover: hover) and (pointer: fine)'))
+export const isCompact = () => isTouch || window.innerWidth < 900 || window.innerHeight < 520
+
+// Publishes the viewport to CSS: --W / --H (real px, unlike 100vh this follows the mobile URL bar)
+// and html.compact (small / touch screens get the bigger, re-laid HUD in hud.js).
+export function installViewport() {
+  const root = document.documentElement
+  const fit = () => {
+    root.classList.toggle('compact', isCompact())
+    root.style.setProperty('--W', `${window.innerWidth}px`)
+    root.style.setProperty('--H', `${window.innerHeight}px`)
+  }
+  window.addEventListener('resize', fit)
+  window.addEventListener('orientationchange', fit)
+  fit()
+}

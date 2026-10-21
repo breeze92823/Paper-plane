@@ -3,8 +3,9 @@ import { CAMERA, GRAPHICS_PRESETS, SPAWN, SPAWN_FACING, STREET_ZONES, TUTORIAL }
 import * as bloxity from './bloxity.js'
 import { inputState, install as installInput } from './input.js'
 import { createTouchControls } from './touch.js'
-import { isTouch } from './device.js'
+import { installViewport, isTouch } from './device.js'
 import { createHud, formatNumber } from './hud.js'
+import { createLoginButton } from './login.js'
 import { player, resetPlayer, step as stepPlayer } from './player.js'
 import { syncYawToPlayer, update as updateCamera } from './camera.js'
 import { createFog, createGround, createLights, createSky } from './world.js'
@@ -21,15 +22,17 @@ import { createEggUi } from './eggUi.js'
 import { createItemsUi } from './itemsUi.js'
 import { PetFollowers } from './petFollowers.js'
 import { ThrownPlanes } from './thrownPlanes.js'
+import { Airflow } from './airflow.js'
 import * as net from './net.js'
 import { RemotePlayers } from './remotePlayers.js'
 import { stepTutorial } from './tutorial.js'
 import { GuideArrows } from './guideArrows.js'
 import { initDaily, takeDailyMessages } from './daily.js'
 import { createDailyUi } from './dailyUi.js'
-import { initSfx, renderOffline, sfx } from './sfx.js'
+import { initSfx, renderFlightOffline, renderOffline, sfx } from './sfx.js'
 
 // --- Bloxity + player state -----------------------------------------------
+installViewport() // html.compact / --W / --H before any HUD is built
 bloxity.init()
 net.init() // waits for auth itself; the game never waits on the server
 initDaily() // the daily-reward calendar: the server's for a signed-in player, else this browser's
@@ -49,13 +52,14 @@ renderer.shadowMap.type = PCFSoftShadowMap
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, preset.dpr))
 document.body.appendChild(renderer.domElement)
 installInput(bloxity.showMenu, renderer.domElement)
-createTouchControls()
+createTouchControls({ showMenu: bloxity.showMenu })
 // The Pets tile opens the Pets menu (eggUi.js), Items the Items window (itemsUi.js); THROW
 // throws like a click or F (throw.js).
 const hud = createHud({ pets: () => eggUi.togglePets(), items: () => itemsUi.toggle(), throw: () => (inputState.actionPressed = true) })
 const eggUi = createEggUi(hud.root)
 const itemsUi = createItemsUi(hud.root) // the Items tile (or I): planes to equip, stored eggs and potions
 const dailyUi = createDailyUi(hud.root) // the calendar button (top right) and Daily Rewards window
+createLoginButton() // "Log in with Bloxity" while signed out
 rewardWindow.open = () => dailyUi.toggle(true) // E at the Free Reward
 
 const scene = new Scene()
@@ -94,6 +98,8 @@ store.subscribe(tintHeldPlane)
 scene.add(heldPlane.object)
 const thrownPlanes = new ThrownPlanes()
 scene.add(thrownPlanes.object)
+const airflow = new Airflow() // vortices, wind streaks and the flight sound around a chased throw
+scene.add(airflow.object)
 // Equipped pets flying after the player.
 const petFollowers = new PetFollowers()
 scene.add(petFollowers.object)
@@ -223,6 +229,7 @@ renderer.setAnimationLoop(() => {
   const tracked = getTrackedFlight()
   updateCamera(camera, dt, tracked)
   if (import.meta.env.DEV) window.__game?.cameraOverride?.(camera) // e.g. a close-up while tuning the avatar
+  airflow.update(dt, tracked, camera)
   // The sun's shadow box goes where the camera is looking: the plane, while one is chased.
   const focus = tracked ? tracked.position : player.position
   lights.follow(focus.x, focus.z)
@@ -257,6 +264,8 @@ if (import.meta.env.DEV) {
     heldPlane,
     sfx, // __game.sfx.buy(), or await __game.renderOffline('buy') for its levels
     renderOffline,
+    renderFlightOffline,
+    airflow,
     teleport: (x, y, z, facing = player.facing) => { resetPlayer({ x, y, z }, facing); syncYawToPlayer() },
     look: (dx, dy) => { inputState.look.dx += dx; inputState.look.dy += dy },
   }

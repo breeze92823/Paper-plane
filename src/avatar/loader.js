@@ -89,8 +89,9 @@ async function applySkin(root, equipped, skinTextureUrl) {
     const item = await describeItem(id)
     plain = assetUrl(item?.assetPaths?.texture) || plain
   }
-  // The portal's composed skin (face/shirt/pants drawn on) first, then the bare one.
-  const candidates = [skinTextureUrl || composedSkinUrl(equipped), plain].filter(Boolean)
+  // The portal's composed skin (face/shirt/pants drawn on) first, then the same built from
+  // the equipped ids (a relayed URL may not load in this browser), then the bare one.
+  const candidates = [...new Set([skinTextureUrl, composedSkinUrl(equipped), plain])].filter(Boolean)
   let texture = null
   for (const url of candidates) {
     try {

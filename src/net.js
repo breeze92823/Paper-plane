@@ -19,6 +19,7 @@ import {
   subscribeAuth,
 } from './bloxity.js'
 import { NET } from './config.js'
+import { AVATAR_SLOTS, isEquipped } from './avatar/cdn.js'
 import { player } from './player.js'
 import { game, hydrate, markProgressKnown, subscribe as subscribeStore } from './store.js'
 
@@ -89,11 +90,11 @@ let connecting = false
 let attempt = 0
 let retryTimer = 0
 
-const EMPTY_BOARDS = { level: [], playTime: [], power: [], wins: [] }
+const EMPTY_BOARDS = { rebirths: [], playTime: [], wins: [] }
 let leaderboards = EMPTY_BOARDS
 
-// The merged all-time + online rows for one board ('level' | 'playTime' | 'power' |
-// 'wins'), as { id, name, value }. Empty until the server's first broadcast, or offline.
+// The merged all-time + online rows for one board ('rebirths' | 'playTime' | 'wins'), as
+// { id, name, value }; drawn by leaderboards.js. Empty until the server's first broadcast, or offline.
 export function getLeaderboard(stat) {
   return leaderboards[stat] || []
 }
@@ -180,20 +181,47 @@ let hydratedFromServer = false
 // the signed-in player's equipped Bloxity cosmetics, skin and proportions. Sent as an
 // opaque JSON string (the server never parses it) so remotePlayers.js can rebuild an
 // identical-looking character for every other session.
+const AVATAR_MAX = 4096 // backend LobbyRoom.ts AVATAR_MAX_LEN: a longer payload is dropped whole
+// The equipped keys avatar/loader.js reads; anything else the SDK returns is dead weight.
+const AVATAR_KEYS = [...AVATAR_SLOTS.map((s) => s.key), 'skinId', 'shirtId', 'pantsId', 'faceId']
+
+function compactEquipped(equipped) {
+  if (!equipped || typeof equipped !== 'object') return null
+  const out = {}
+  for (const key of AVATAR_KEYS) if (isEquipped(equipped[key])) out[key] = equipped[key]
+  return out
+}
+
+// Only a URL every other browser can load: absolute http(s). A blob: URL lives in this
+// page only and a data: URL blows the length cap; without one, the receiver composes the
+// skin from the equipped ids (cdn.js composedSkinUrl).
+function shareableSkin(url) {
+  if (!url) return null
+  try {
+    const abs = new URL(url, location.href)
+    return abs.protocol === 'https:' || abs.protocol === 'http:' ? abs.href : null
+  } catch {
+    return null
+  }
+}
+
 function avatarPayload() {
   const signedIn = !!authState.user
-  return {
-    equipped: signedIn ? getEquippedAvatar() : null,
-    skin: signedIn ? getSkinTextureUrl() : null,
-    proportions: getProportions(),
+  const equipped = signedIn ? compactEquipped(getEquippedAvatar()) : null
+  const proportions = getProportions()
+  // The skin URL is the first thing dropped when the payload does not fit.
+  for (const skin of [signedIn ? shareableSkin(getSkinTextureUrl()) : null, null]) {
+    const json = JSON.stringify({ equipped, skin, proportions })
+    if (json.length <= AVATAR_MAX) return json
   }
+  return JSON.stringify({ equipped, skin: null, proportions: null })
 }
 
 let lastSentAvatar = ''
 
 function sendAvatarNow() {
   if (!room) return
-  const payload = JSON.stringify(avatarPayload())
+  const payload = avatarPayload()
   if (payload === lastSentAvatar) return
   lastSentAvatar = payload
   send('setAvatar', { avatar: payload })
@@ -310,7 +338,7 @@ async function connect() {
         username: getDisplayName(),
         userId: getStableUserId(), // '' for a guest: nothing to load or save
         // Seeds PlayerState.avatar so others render us right from the first frame.
-        avatar: JSON.stringify(avatarPayload()),
+        avatar: avatarPayload(),
       }),
       NET.joinTimeoutMs,
       'join timed out',

@@ -44,6 +44,7 @@ import {
 } from './props.js'
 import { createTerrain } from './terrain.js'
 import { createStreet } from './street.js'
+import { createLeaderboards } from './leaderboards.js'
 import { game, subscribe } from './store.js'
 
 // Floor layers, lifted just enough to never fight the ground or each other.
@@ -302,6 +303,11 @@ export function createMap() {
       : [{ text: e.name, color: '#ffffff', size: 52 }, { text: e.cost, color: e.cost.startsWith('⬢') ? '#4be36a' : '#ffd84a', size: 36 }]
     root.add(place(makeSign(lines, e.best ? 2.4 : 1.3), e.x, STAGE_H + (e.best ? 6.4 : 5.6), es.z + 1.7))
   }
+
+  // The three leaderboards in a row behind the Egg Row (leaderboards.js).
+  const boards = createLeaderboards()
+  root.add(boards.root)
+  animate.push((t, dt) => boards.update(t, dt))
 
   // Waterfalls cascading down the cliff behind the eggs, facing the plaza.
   for (const f of MAP.waterfalls) root.add(place(waterfall(f.w, f.faces), f.x, 0, 0))
