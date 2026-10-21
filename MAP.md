@@ -56,7 +56,9 @@ North is up. The map isn't to scale; coordinates are in the landmark index.
   │ ╰─────────────╯     FREE REWARD ◉  ○ yellow ring               ┃▭ VERY OP!    │ C
   │      WEST           (−9,21.5)                                  ┃▭ BEST OVERALL│ L
   │                ▭ Unicorn  Sunset  Sphinx  Meadow  Basic ▭      ┃  (pads x 18–30)
-  │                      EGG ROW  (z = 31)                         ┃              │ I
+  │                      EGG ROW  (z = 28)                         ┃              │ I
+  │        ▣ Total Wins    ▣ Total Rebirths   ▣ Total Playtime     ┃              │ I
+  │              LEADERBOARDS  (z = 37)                            ┃              │ I
   └─────────────────────────────────────────────────────────────── z = 40 ───────┘ F
              ≈≈≈ waterfall (x −18)        ≈ small fall (x 4)                        F
                   SOUTH CLIFF: faces at z 44 / 52 / 60, rising 15 / 20 / 25 m
@@ -88,7 +90,8 @@ North is up. The map isn't to scale; coordinates are in the landmark index.
 | Rebirth Training Pads | East | x 18 → 30, z −17 → 31 | 9 pads, prizes at the east ends (x 27.8) |
 | FREE REWARD | South plaza | (−9, 21.5) | Red dragon on a round pedestal |
 | Yellow floor ring | South plaza | (−3.6, 21.8) | Flat ring beside the FREE REWARD |
-| Egg Row stage | South | x −11 → 11, z 31 | Five hatchable eggs with odds boards |
+| Egg Row stage | South | x −11 → 11, z 28 | Five hatchable eggs with odds boards |
+| Leaderboards | South | x 12.2, 0, −12.2, z 37 | Total Playtime, Total Rebirths, Total Wins, behind the Egg Row |
 | Main waterfall | South cliff | x −18 | 7 m wide, cascades 25 m down three terraces |
 | Small waterfall | South cliff | x 4 | 2.4 m wide, on the second terrace (15 → 20 m) |
 
@@ -103,7 +106,7 @@ North is up. The map isn't to scale; coordinates are in the landmark index.
   - **Throw Area** strip (x ±14, z −35 → −28) across the field mouth.
   - **North lane** (x ±5) running from the Throw Area to the band.
   - **Band** across the spawn, from the hall floor (x −20) to the training pads (x 16), z −2 → 17.5. Its edges step outward toward the Throw Area.
-  - **South lane** (x ±6) stepping down from the band to the **egg area** (x ±14, z 27 → 38).
+  - **South lane** (x ±6) stepping down from the band to the **egg area** (x ±14, z 24 → 39.5), holding the Egg Row and the leaderboards behind it.
 - **Decals:** the orange chevrons, the white floor arrows, the yellow ring and the *THROW AREA* lettering are flat floor decals. They aren't solid.
 
 ### North: Throw Area and the throwing field
@@ -249,7 +252,7 @@ Nine short raised pads side by side on a light-blue studded base. Players stand 
   - **Dragon:** a chunky red dragon with big white eyes, horns and wings. It sways side to side.
   - **Sign:** *FREE REWARD* at 5.6 m.
 - **Yellow ring:** at (−3.6, 21.8), on the floor beside it.
-- **Egg stage:** white studded, blue front trim, x −11 → 11, z 28.2 → 33.8, 0.4 m high.
+- **Egg stage:** white studded, blue front trim, x −11 → 11, z 25.2 → 30.8, 0.4 m high.
 - **Each egg** faces north and has:
   - a white pedestal with a blue band;
   - a spotted egg;
@@ -265,6 +268,20 @@ Nine short raised pads side by side on a light-blue studded base. Players stand 
 | Unicorn | −8.4 | 🏆 500 Wins | White with pink spots, gold horn, pink mane |
 
 **Hatching:** within 4.5 m of an egg (the Demon Egg too), *E Open …* shows; E or a click opens its window with the six pets, their odds and power, and **Open 1 (E) / Open 3 (R) / Auto (T)**. Walking past 6.5 m closes it. The odds boards behind the eggs show the same pets. Each pet adds its power to the Power multiplier while equipped (1 slot to start), and equipped pets fly after the player. The Pets tile opens the Pets menu (equip, Equip Best, delete). Gem eggs (Sphinx, Unicorn) can't be opened until gems are sold; the Demon Egg sells its one pet for 1M Wins. Data: `EGG_SHOP`, `EGGS`, `PET_FOLLOW` in config.js; code in `eggs.js`, `hatch.js`, `pets.js`, `eggUi.js`, `petFollowers.js`. Pets save with the rest of the progress; Paper-plane-backend's `constants.ts` `EGG_PETS` must list every pet name.
+
+### South: Leaderboards
+
+Three boards in a row behind the Egg Row at z 37, facing the plaza (`MAP.leaderboards`, built by `src/leaderboards.js`). Each is a 7.6 × 10 m panel on two legs, 5 m up so it shows above the eggs' odds boards, in a coloured frame with a topper:
+
+| Board (left → right from the plaza) | x | Colour | Topper | Shows |
+|---|---|---|---|---|
+| Total Playtime | 12.2 | Teal | Prop plane with a spinning propeller | Time connected, server-measured |
+| Total Rebirths | 0 | Pink | Winged badge with a plane | Rebirths (ties: higher Power first) |
+| Total Wins | −12.2 | Yellow | Bobbing white paper plane | Wins |
+
+- **Rows:** top 10 from Paper-plane-backend's `leaderboard` broadcast (every saved account merged with whoever is online). Each row has the rank (gold, silver and bronze medals for the top three), an initial-letter avatar, the name and the value. Your own row is gold.
+- **Offline / before the first broadcast:** a board shows just your own row (Playtime counts this visit).
+- Only the legs and base are solid.
 
 ### Surrounding terrain
 
@@ -319,6 +336,7 @@ Nine short raised pads side by side on a light-blue studded base. Players stand 
 | `src/config.js` → `STREET`, `STREET_ZONES` | The street past the gate: its length, walls, zones and their colours, the end portal |
 | `src/street.js` | Builds the street zone by zone: ground, road, fences, walls, zone gates, the runway, the end portal, and places each zone's scatter |
 | `src/streetProps.js` | The street's building and prop types and each zone's theme |
+| `src/leaderboards.js` | The three leaderboards behind the Egg Row and their live rows (from `src/net.js`) |
 | `src/terrain.js` | The terraced hills, cliffs and hill trees |
 | `src/textures.js` | Canvas-painted textures: studs, facades, lava, gold, rainbow, neon, swirl, egg shells, odds boards, water, court, clock, signs |
 | `src/world.js` | Sky, ground, lights, fog |

@@ -178,6 +178,17 @@ const STYLE = `
   box-shadow:inset 0 ${u(3)} 0 rgba(255,255,255,.45)}
 .hud .bar .txt{position:absolute;inset:0;display:flex;justify-content:space-between;align-items:center;
   padding:0 ${u(8)};font-size:${u(28)}}
+
+/* --- Small / touch screens (html.compact, device.js) ----------------------------------------
+   Stats then menu down the top-left, x2 boosts top-right under the touch menu buttons: the bottom
+   corners belong to the move stick and the THROW / JUMP buttons (touch.js). Clear of notches. */
+html.compact .hud .stats{top:calc(${u(10)} + env(safe-area-inset-top));bottom:auto;left:calc(${u(8)} + env(safe-area-inset-left));gap:${u(6)}}
+html.compact .hud .menu{top:calc(${u(150)} + env(safe-area-inset-top));left:calc(${u(17)} + env(safe-area-inset-left));transform:none}
+html.compact .hud .side{top:calc(${u(24)} + 56px + env(safe-area-inset-top));right:calc(${u(18)} + env(safe-area-inset-right));transform:none;gap:${u(36)}}
+html.compact .hud .power{bottom:calc(${u(14)} + env(safe-area-inset-bottom))}
+/* Touch has its own THROW button (touch.js), which pulses in the throw area instead. */
+html.touch .hud .throw{display:none}
+html.touch .hud :is(.ew-close,.pm-close){width:${u(66)};height:${u(66)};font-size:${u(34)}}
 `
 
 // Shared gradients and icon symbols; each icon is drawn once and <use>d everywhere.
@@ -385,7 +396,8 @@ export function createHud(actions = {}) {
   document.body.appendChild(root)
 
   const fit = () => {
-    const s = Math.min(window.innerWidth / HUD.refWidth, window.innerHeight / HUD.refHeight, HUD.maxScale)
+    const refHeight = document.documentElement.classList.contains('compact') ? HUD.compactRefHeight : HUD.refHeight
+    const s = Math.min(window.innerWidth / HUD.refWidth, window.innerHeight / refHeight, HUD.maxScale)
     root.style.setProperty('--u', `${s}px`)
   }
   window.addEventListener('resize', fit)
@@ -413,6 +425,7 @@ export function createHud(actions = {}) {
     autoCost.hidden = state.autoThrowOwned
     autoState.hidden = !state.autoThrowOwned
     throwBtn.hidden = !state.canThrow
+    document.documentElement.classList.toggle('can-throw', state.canThrow) // touch.js pulses its THROW
     for (const btn of x2Btns) {
       const stat = btn.dataset.x2
       const owned = game.x2Owned[stat]

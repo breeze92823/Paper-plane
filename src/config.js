@@ -126,8 +126,8 @@ export const MAP = {
   // area across the field mouth, a lane south from it, a band across the spawn from the hall
   // floor to the training pads, a lane south to the eggs.
   path: [
-    [-14, -35], [14, -35], [14, -28], [5, -28], [5, -12], [9, -12], [9, -4], [16, -4], [16, 17.5], [13, 17.5], [13, 19], [9, 19], [9, 21], [6, 21], [6, 27], [14, 27], [14, 38],
-    [-14, 38], [-14, 27], [-6, 27], [-6, 21], [-9, 21], [-9, 19], [-13, 19], [-13, 17.5], [-20, 17.5],
+    [-14, -35], [14, -35], [14, -28], [5, -28], [5, -12], [9, -12], [9, -4], [16, -4], [16, 17.5], [13, 17.5], [13, 19], [9, 19], [9, 21], [6, 21], [6, 24], [14, 24], [14, 39.5],
+    [-14, 39.5], [-14, 24], [-6, 24], [-6, 21], [-9, 21], [-9, 19], [-13, 19], [-13, 17.5], [-20, 17.5],
     [-20, -2], [-16, -2], [-16, -4], [-9, -4], [-9, -12], [-5, -12], [-5, -28], [-14, -28],
   ],
   // Where players stand to throw: the walkway strip across the field mouth, its name painted
@@ -230,7 +230,7 @@ export const MAP = {
   freeReward: { x: -9, z: 21.5 },
   yellowRing: { x: -3.6, z: 21.8 },
   // Egg row on a stage at the south end, east to west. cost: wins, or gems for ⬢ eggs.
-  eggStage: { z: 31, halfWidth: 11 },
+  eggStage: { z: 28, halfWidth: 11 },
   eggs: [
     { x: 8.4, name: 'Basic', cost: '🏆 25 Wins', color: '#f6f3ec', spot: '#d9d4c8' },
     { x: 4.2, name: 'Meadow', cost: '🏆 50 Wins', color: '#7fe0b8', spot: '#4fc48e' },
@@ -240,6 +240,22 @@ export const MAP = {
   ],
   // Waterfalls cascading down the cliff behind the eggs: one sheet per terrace face
   // [z, y bottom, y top], front to back, with a stream across each terrace top between.
+  // The three leaderboards (leaderboards.js) in a row behind the Egg Row, facing the plaza,
+  // fed by Paper-plane-backend's `leaderboard` broadcast (`stat` is its board key). Panel `w` x
+  // `h` m, its bottom `y` up on two legs; `rows` names per board. Left to right as seen from
+  // the plaza: Playtime, Rebirths, Wins.
+  leaderboards: {
+    z: 37,
+    y: 5, // clear of the eggs' odds boards (4.8 m) seen from the plaza
+    w: 7.6,
+    h: 10,
+    rows: 10,
+    boards: [
+      { stat: 'playTime', title: 'Total Playtime', icon: '⏱️', x: 12.2, color: '#19b6d8', dark: '#0a3a52', topper: 'propeller' },
+      { stat: 'rebirths', title: 'Total Rebirths', icon: '🔄', x: 0, color: '#ef476f', dark: '#4a0f26', topper: 'badge' },
+      { stat: 'wins', title: 'Total Wins', icon: '🏆', x: -12.2, color: '#f5c518', dark: '#4a3600', topper: 'plane' },
+    ],
+  },
   waterfalls: [
     { x: -18, w: 7, faces: [[43.7, 0, 15], [51.7, 15, 20], [59.7, 20, 25]] },
     { x: 4, w: 2.4, faces: [[51.7, 15, 20]] },
@@ -279,6 +295,10 @@ export const HUD = {
   refWidth: 1000, // narrowest width the bottom row fits at scale 1
   refHeight: 990,
   maxScale: 1.3,
+  // Phones / small windows (html.compact, device.js): a shorter reference, so the HUD stays big enough
+  // to read and tap; hud.js moves the stats and menu to the top-left and the x2 boosts up, clear of
+  // the touch stick and buttons.
+  compactRefHeight: 640,
 }
 
 // Default (signed-out / fallback) character look.
@@ -330,6 +350,38 @@ export const CAMERA = {
     blendOut: 0.5, // s back, when the plane landed close enough to see the player
     snapBeyond: 40, // m: a plane further than this snaps the camera home instead
   },
+}
+
+// The air around a chased street throw (airflow.js): wingtip vortex ribbons, wind streaks, a
+// launch ring, touchdown dust, and how hard the camera feels the speed. Metres, seconds.
+export const AIRFLOW = {
+  trailPoints: 160, // samples per wingtip ribbon (enough for trailLife at high refresh rates)
+  trailLife: 0.6, // s a stretch of vortex lasts
+  trailWidth: 0.05, // m half-width at the wingtip; it spreads as it ages
+  trailAlpha: 0.6,
+  vortexRadius: 0.28, // m the corkscrew swings out to, once grown
+  vortexTwist: 0.35, // turns per metre of trail
+  trailGrow: 3.5, // m behind the wingtip it takes to reach full size: the camera is only ~4 m back
+  streaks: 90,
+  streakAhead: [6, 70], // m ahead of the plane they are placed
+  streakRadius: [1.2, 7], // m out from the flight path
+  streakBlur: 0.05, // s of travel each streak is drawn as long as
+  streakMaxLen: 7, // m
+  streakWidth: 0.035, // m half-width
+  streakAlpha: 0.75,
+  rings: 3, // launch rings shed
+  ringEvery: 0.12, // s between them
+  ringLife: 0.7, // s each takes to fade
+  ringGrow: 7, // times its size it ends at
+  ringAlpha: 0.75,
+  ringColor: '#e3f4ff',
+  dustPuffs: 12,
+  dustLife: 1.1, // s
+  dustSize: 0.9, // m
+  dustAlpha: 0.55,
+  dustColor: '#efe8d8',
+  fovAtSpeed: 12, // degrees wider at full speed
+  shake: 0.06, // m of buffeting at full speed
 }
 
 // --- Bloxity (bloxity.js, avatar/) -------------------------------------------------

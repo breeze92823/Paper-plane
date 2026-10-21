@@ -113,7 +113,7 @@ const STYLE = `
 .hud .pm-pet.on{box-shadow:0 0 0 ${u(4)} #5cff3d}
 .hud .pm-pet.on::after{content:'✓';position:absolute;top:${u(4)};right:${u(8)};font-size:${u(24)};color:#5cff3d}
 .hud .pm.deleting .pm-pet{box-shadow:0 0 0 ${u(3)} #ff5a4a}
-.hud .pm-empty{padding:${u(40)};text-align:center;font-size:${u(30)};color:#d8dcf0}
+.hud .pm-empty{grid-column:1 / -1;padding:${u(40)};text-align:center;font-size:${u(30)};color:#d8dcf0}
 `
 
 const el = (html) => {

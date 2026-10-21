@@ -48,6 +48,12 @@ export function syncYawToPlayer() {
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v)
 
 // --- Chasing a street throw -------------------------------------------------------
+// Buffeting while chasing, metres (airflow.js sets it from the plane's speed).
+let chaseShake = 0
+export function setChaseShake(metres) {
+  chaseShake = metres
+}
+
 const T = CAMERA.track
 const UP = new Vector3(0, 1, 0)
 const _chasePos = new Vector3()
@@ -78,6 +84,12 @@ function chase(camera, dt, tracked) {
   chaseY += (f.y + T.up - chaseY) * (1 - Math.exp(-T.heightEase * dt))
   // The street runs north (-Z): sit south of the plane, a little east, looking up the street.
   _chasePos.set(f.x + T.side, chaseY, f.z + T.back)
+  if (chaseShake > 0) {
+    // Two uneven sines a side: turbulence, not a regular wobble.
+    const t = performance.now() / 1000
+    _chasePos.x += chaseShake * (Math.sin(t * 13.1) + 0.6 * Math.sin(t * 23.7 + 1.3))
+    _chasePos.y += chaseShake * (Math.sin(t * 11.3 + 0.7) + 0.5 * Math.sin(t * 19.1))
+  }
   _chaseLook.set(f.x, chaseY - T.up - T.lookBelow, f.z - T.ahead)
   _chaseQuat.setFromRotationMatrix(_m.lookAt(_chasePos, _chaseLook, UP))
   const k = chaseBlend * chaseBlend * (3 - 2 * chaseBlend)

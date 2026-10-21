@@ -498,6 +498,175 @@ const GAP = { click: 0.03, select: 0.03, coins: 0.08, land: 0.05, bump: 0.05, pa
 // sfx.click(), sfx.coins(4), sfx.reveal(rank, isNew) ...: each returns a handle with stop().
 export const sfx = Object.fromEntries(Object.entries(SOUNDS).map(([name, fn]) => [name, (...args) => play(name, GAP[name] ?? 0.02, (t) => fn(t, ...args))]))
 
+// --- The plane in flight (a continuous voice) --------------------------------------------
+// While the camera chases a street throw (airflow.js drives it), the air it cuts through:
+//  - rush: broad noise, left and right on their own loops and filters for width, the
+//    lowpass opening with speed (the wind getting brighter and louder as the plane goes faster),
+//    each side breathing with a slow, uneven gust;
+//  - roar: the low body of air moving past, only really there at speed;
+//  - whistle: a narrow band riding up with speed, the air cutting over the paper's edges;
+//  - flutter: the trailing edge buzzing, highpassed noise chopped by an LFO whose rate
+//    climbs with airspeed (paper rattles faster the harder it is pushed).
+// Diving opens the filters and lifts the level; climbing does the opposite.
+// Trim, measured with renderFlightOffline: a bed under the one-shots, about 1.5x throwRelease's
+// RMS at full speed (0.035) and half of it on a short, slow throw.
+const FLIGHT_LEVEL = 0.23
+
+function loopNoise(ctx, buf) {
+  const src = ctx.createBufferSource()
+  src.buffer = buf
+  src.loop = true
+  src.start(0, rand(0, 1.9))
+  return src
+}
+
+function filter(ctx, type, freq, q) {
+  const f = ctx.createBiquadFilter()
+  f.type = type
+  f.frequency.value = freq
+  f.Q.value = q
+  return f
+}
+
+// An LFO at `hz` swinging `param` by +-`depth` around whatever it is set to.
+function lfo(ctx, param, hz, depth, type = 'sine') {
+  const o = ctx.createOscillator()
+  o.type = type
+  o.frequency.value = hz
+  const g = ctx.createGain()
+  g.gain.value = depth
+  o.connect(g)
+  g.connect(param)
+  o.start()
+  return { o, g }
+}
+
+function buildFlight(ctx, dry, wet, noiseBuf) {
+  const out = ctx.createGain()
+  out.gain.value = 0
+  out.connect(dry)
+  const send = ctx.createGain()
+  send.gain.value = 0.12
+  out.connect(send)
+  send.connect(wet)
+
+  const sources = []
+  const v = { ctx, out, sources, rush: [], lfos: [] }
+  for (const pan of [-0.45, 0.45]) {
+    const src = loopNoise(ctx, noiseBuf)
+    const lp = filter(ctx, 'lowpass', 700, 0.7)
+    const bp = filter(ctx, 'peaking', 900, 0.8)
+    bp.gain.value = 4
+    const g = ctx.createGain()
+    g.gain.value = 0
+    const gust = ctx.createGain()
+    gust.gain.value = 1
+    v.lfos.push(lfo(ctx, gust.gain, pan < 0 ? 0.31 : 0.47, 0.22), lfo(ctx, gust.gain, pan < 0 ? 0.83 : 1.13, 0.08))
+    const p = ctx.createStereoPanner()
+    p.pan.value = pan
+    src.connect(lp).connect(bp).connect(g).connect(gust).connect(p).connect(out)
+    sources.push(src)
+    v.rush.push({ lp, bp, g })
+  }
+
+  const roarSrc = loopNoise(ctx, noiseBuf)
+  v.roarLp = filter(ctx, 'lowpass', 160, 0.9)
+  v.roar = ctx.createGain()
+  v.roar.gain.value = 0
+  roarSrc.connect(v.roarLp).connect(v.roar).connect(out)
+  sources.push(roarSrc)
+
+  const whistleSrc = loopNoise(ctx, noiseBuf)
+  v.whistleBp = filter(ctx, 'bandpass', 1200, 9)
+  v.whistle = ctx.createGain()
+  v.whistle.gain.value = 0
+  v.lfos.push(lfo(ctx, v.whistleBp.frequency, 0.9, 60))
+  whistleSrc.connect(v.whistleBp).connect(v.whistle).connect(out)
+  sources.push(whistleSrc)
+
+  const flutterSrc = loopNoise(ctx, noiseBuf)
+  const flutterHp = filter(ctx, 'bandpass', 2600, 0.7)
+  const chop = ctx.createGain()
+  chop.gain.value = 0.5
+  v.flutterLfo = lfo(ctx, chop.gain, 20, 0.5, 'triangle')
+  v.lfos.push(v.flutterLfo)
+  v.flutter = ctx.createGain()
+  v.flutter.gain.value = 0
+  flutterSrc.connect(flutterHp).connect(chop).connect(v.flutter).connect(out)
+  sources.push(flutterSrc)
+  return v
+}
+
+// speed: 0..1 of the street's top speed; dive: -1 (climbing hard) .. 1 (diving hard);
+// level: 0..1 overall (eases it in and out).
+function setFlight(v, { speed, dive = 0, level = 1 }, t) {
+  const s = clamp(speed, 0, 1.2)
+  const d = clamp(dive, -1, 1)
+  const k = 0.08 // s: every change glides, so nothing steps
+  const air = 1 + 0.35 * d
+  v.out.gain.setTargetAtTime(FLIGHT_LEVEL * level, t, 0.12)
+  for (const [i, r] of v.rush.entries()) {
+    r.lp.frequency.setTargetAtTime((500 + 3200 * s * s) * air * (i ? 1.08 : 1), t, k)
+    r.bp.frequency.setTargetAtTime((700 + 1300 * s) * air, t, k)
+    r.g.gain.setTargetAtTime((0.07 + 0.2 * s) * air, t, k)
+  }
+  v.roarLp.frequency.setTargetAtTime(120 + 160 * s, t, k)
+  v.roar.gain.setTargetAtTime(0.45 * s * s * air, t, k)
+  v.whistleBp.frequency.setTargetAtTime((900 + 2100 * s) * (1 + 0.12 * d), t, k)
+  v.whistle.gain.setTargetAtTime(0.09 * s * s * air, t, k)
+  v.flutterLfo.o.frequency.setTargetAtTime(12 + 34 * s, t, k)
+  v.flutter.gain.setTargetAtTime(0.05 + 0.16 * s, t, k)
+}
+
+function stopFlight(v, t) {
+  v.out.gain.cancelScheduledValues(t)
+  v.out.gain.setValueAtTime(v.out.gain.value, t)
+  v.out.gain.setTargetAtTime(0, t, 0.12)
+  for (const src of v.sources) src.stop(t + 0.8)
+  for (const { o } of v.lfos) o.stop(t + 0.8)
+}
+
+// start() when the chase begins, update({ speed, dive, level }) every frame, stop() on
+// touchdown. Silent (and free) until the first gesture has woken audio.
+export const flightVoice = (() => {
+  let v = null
+  return {
+    start() {
+      if (v || !ready()) return
+      v = buildFlight(live.ctx, live.dry, live.wet, live.noise)
+    },
+    update(params) {
+      if (v) setFlight(v, params, live.ctx.currentTime)
+    },
+    stop() {
+      if (!v) return
+      stopFlight(v, live.ctx.currentTime)
+      v = null
+    },
+    get playing() {
+      return !!v
+    },
+  }
+})()
+
+// Dev: renders the flight voice held at `speed` offline and measures it, like renderOffline.
+export async function renderFlightOffline(speed = 1, seconds = 2, dive = 0) {
+  const ctx = new OfflineAudioContext(2, Math.ceil(44100 * seconds), 44100)
+  const g = build(ctx, ctx.destination)
+  const v = buildFlight(ctx, g.dry, g.wet, g.noise)
+  setFlight(v, { speed, dive }, 0)
+  const buf = await ctx.startRendering()
+  let peak = 0
+  let sum = 0
+  const d = buf.getChannelData(0)
+  const from = Math.floor(44100 * 0.6) // past the glide in
+  for (let i = from; i < d.length; i++) {
+    peak = Math.max(peak, Math.abs(d[i]))
+    sum += d[i] * d[i]
+  }
+  return { peak: +peak.toFixed(3), rms: +Math.sqrt(sum / (d.length - from)).toFixed(4) }
+}
+
 // Dev: renders one sound offline and measures it, for balancing levels without ears.
 // await renderOffline('buy') -> { peak, rms, seconds }
 export async function renderOffline(name, args = [], seconds = 3) {

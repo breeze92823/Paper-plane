@@ -12,7 +12,7 @@ import { ANIM, MAP, PHYSICS, REMOTE_PLAYER as R, THROW } from './config.js'
 import { subscribeRoster } from './net.js'
 import { launchRemote } from './throw.js'
 import { TRAINING } from './pads.js'
-import { loadBaseCharacter } from './avatar/character.js'
+import { buildDefaultCharacter, loadBaseCharacter } from './avatar/character.js'
 import { applyProportions, attachEquippedAccessories } from './avatar/loader.js'
 import { disposeAnimator, makeAnimator } from './avatar/animator.js'
 import { HeldPlane } from './avatar/heldPlane.js'
@@ -32,6 +32,7 @@ const planeColor = (i) => (MAP.pads[i] ?? MAP.pads[0]).plane
 const angleTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from))
 const RELEASE_DELAY = ANIM.toss.releaseAt * ANIM.toss.duration // s from toss start to release, as in throw.js
 const HAND_Y = 1.2 // m: where a plane leaves from when the rig isn't loaded yet
+const AVATAR_RETRY_MS = 5000 // after a failed avatar build
 const _pos = new Vector3()
 const _quat = new Quaternion()
 
@@ -58,6 +59,7 @@ class RemotePlayer {
     this.avatar = null
     this.animator = null
     this.avatarRaw = null
+    this.ready = false // hidden until the first avatar build has landed
     this.plane = -1
     this.generation = 0
     this.abort = null
@@ -74,16 +76,32 @@ class RemotePlayer {
   }
 
   // Rebuilt whenever the sender's avatar payload changes; only the newest load may land.
+  // Hidden (this.ready) until the first one has, so nobody pops in as a bare rig and then
+  // changes clothes. A failed load keeps the current look and retries shortly.
   async build(raw) {
     const mine = ++this.generation
     this.abort?.abort()
     const abort = (this.abort = new AbortController())
     const parsed = parseAvatar(raw) || {}
-    const group = await loadBaseCharacter()
-    if (mine !== this.generation) return
-    await attachEquippedAccessories(group, parsed.equipped || null, { signal: abort.signal, skinTextureUrl: parsed.skin || null })
-    if (mine !== this.generation) return
-    applyProportions(group, parsed.proportions || null)
+    try {
+      const group = await loadBaseCharacter()
+      if (mine !== this.generation) return
+      await attachEquippedAccessories(group, parsed.equipped || null, { signal: abort.signal, skinTextureUrl: parsed.skin || null })
+      if (mine !== this.generation) return
+      applyProportions(group, parsed.proportions || null)
+      this.setAvatar(group)
+    } catch (err) {
+      if (mine !== this.generation) return
+      console.warn('[remotePlayers] avatar load failed', err)
+      if (!this.avatar) this.setAvatar(buildDefaultCharacter()) // never stay invisible
+      setTimeout(() => {
+        if (mine === this.generation) this.avatarRaw = null // update() rebuilds
+      }, AVATAR_RETRY_MS)
+    }
+    this.ready = true
+  }
+
+  setAvatar(group) {
     if (this.avatar) this.object.remove(this.avatar)
     disposeAnimator(this.animator)
     this.avatar = group
@@ -152,9 +170,10 @@ class RemotePlayer {
       // Until its first `move`, a session sits at the schema's default (0, 0, 0), a spot
       // no real player stands on (SPAWN is 0.3 up): keep it hidden rather than pop it
       // into the plaza and slide it over.
+      // Likewise until their look has loaded.
       const reported = p.x !== 0 || p.y !== 0 || p.z !== 0
-      o.visible = this.heldPlane.object.visible = reported
-      if (!reported) return
+      o.visible = reported && this.ready
+      if (!o.visible) return
       this.heldPlane.setInHand(true)
       o.position.set(p.x, p.y, p.z)
       o.rotation.y = p.yaw

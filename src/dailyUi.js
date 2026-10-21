@@ -20,7 +20,7 @@ const STYLE = `
 /* Everything else steps aside, except what a claim pops up over it: the popup and the egg hatch. */
 .hud.dw-open > :not(.dw):not(svg):not(.zonepop):not(.hz){visibility:hidden}
 .hud.dw-open .zonepop{z-index:13}
-.hud .dw{--du:min(var(--u), calc(100vw / 900), calc(100vh / 690));position:absolute;inset:0;z-index:11;pointer-events:auto;
+.hud .dw{--du:min(var(--u), calc(var(--W, 100vw) / 900), calc(var(--H, 100vh) / 690));position:absolute;inset:0;z-index:11;pointer-events:auto;
   font-family:${FONT};backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);background:rgba(0,0,0,.06)}
 .hud .dw[hidden]{display:none}
 .hud .dw-panel{position:absolute;left:50%;top:50%;width:${du(834)};height:${du(578)};transform:translate(-50%, calc(-50% + ${du(18)}));

@@ -31,7 +31,7 @@ const STYLE = `
 /* Everything else steps aside but the corners, and what a Hatch / Drink pops up over it. */
 .hud.iw-open > :not(.corner):not(.iw):not(svg):not(.zonepop):not(.hz){visibility:hidden}
 .hud.iw-open .zonepop{z-index:13}
-.hud .iw{--iu:min(var(--u), calc(100vw / 1400), calc(100vh / 760));position:absolute;inset:0;z-index:11;pointer-events:auto;font-family:${FONT}}
+.hud .iw{--iu:min(var(--u), calc(var(--W, 100vw) / 1400), calc(var(--H, 100vh) / 760));position:absolute;inset:0;z-index:11;pointer-events:auto;font-family:${FONT}}
 .hud .iw[hidden],.hud .iw-grid[hidden],.hud .iw-empty[hidden]{display:none}
 .hud .iw-panel{position:absolute;left:50%;top:50%;width:${iu(818)};height:${iu(573)};transform:translate(-50%, calc(-50% + ${iu(36)}));
   box-sizing:border-box;border:${iu(4)} solid #1b1b1b;background:rgba(12,12,14,.74);box-shadow:inset 0 0 0 ${iu(2)} rgba(255,255,255,.12)}
