@@ -62,13 +62,12 @@ const STYLE = `
 .hud .quest-warn{position:absolute;top:calc(100% + ${u(10)});left:50%;transform:translateX(-50%);
   font-size:${u(28)};color:#ff3b30;white-space:nowrap}
 .hud .quest-warn:empty{display:none}
-/* SKIP, off the banner's right end; above the REBIRTH NOW dim (hence the banner's z-index).
-   The first tap arms it (red SKIP?), a second within a few seconds skips. */
+/* SKIP, off the banner's right end; above the REBIRTH NOW dim (hence the banner's z-index). */
 .hud .quest{z-index:10}
 .hud .quest-skip{position:absolute;left:calc(100% + ${u(12)});top:50%;margin-top:${u(-24)};height:${u(48)};padding:0 ${u(14)};
   box-sizing:border-box;border:${u(2.5)} solid #1c1c1c !important;border-radius:${u(8)};background:linear-gradient(#9aa3b5,#646d80);
   font-size:${u(24)};white-space:nowrap;box-shadow:inset 0 ${u(-4)} 0 rgba(0,0,0,.15);${outline(2.5, '#1c1c1c')}}
-.hud .quest-skip.armed{background:linear-gradient(#ff5a4a,#d4111b)}
+.hud .quest-skip:hover{filter:brightness(1.12)}
 .hud .quest.leaving{animation:quest-out .5s ease-in forwards}
 @keyframes quest-out{0%{opacity:1;transform:translateX(-50%) scale(1)}30%{opacity:1;transform:translateX(-50%) scale(1.15)}
   100%{opacity:0;transform:translateX(-50%) scale(.2)}}
@@ -497,13 +496,7 @@ export function createHud(actions = {}) {
         showPopup(`🏆 ${formatNumber(HUD.prices[act])} Wins`, `needed: you have ${formatNumber(game.wins)}`, 'bad')
       }
     }
-    if (act === 'skipTutorial') {
-      if (!questSkip.classList.contains('armed')) armSkip(true)
-      else {
-        armSkip(false)
-        skipTutorial()
-      }
-    }
+    if (act === 'skipTutorial') skipTutorial()
     if (act === 'rebirth') openRebirth(true)
     if (act === 'rebirthClose') openRebirth(false)
     if (act === 'rebirthConfirm' && acceptRebirth()) {
@@ -578,13 +571,6 @@ export function createHud(actions = {}) {
   const questText = quest.querySelector('.quest-text')
   const questWarn = quest.querySelector('.quest-warn')
   const questSkip = quest.querySelector('.quest-skip')
-  let disarmTimer = 0
-  function armSkip(on) {
-    clearTimeout(disarmTimer)
-    questSkip.classList.toggle('armed', on)
-    questSkip.textContent = on ? 'SKIP?' : 'SKIP'
-    if (on) disarmTimer = setTimeout(() => armSkip(false), 3000)
-  }
   const dim = root.querySelector('.tdim')
   const menu = root.querySelector('.menu')
   const confirmBtn = rb.querySelector('.rb-go')
