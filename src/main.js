@@ -111,7 +111,10 @@ store.subscribe((g) => petFollowers.sync(g))
 let heard = { known: store.game.progressKnown, level: store.game.level, step: store.game.tutorialStep, boosts: { ...store.game.boosts } }
 store.subscribe((g) => {
   if (heard.known) {
-    if (g.tutorialStep > heard.step) (g.tutorialStep >= TUTORIAL.doneStep ? sfx.questDone : sfx.questStep)()
+    if (g.tutorialStep > heard.step) {
+      if (g.tutorialStep < TUTORIAL.doneStep) sfx.questStep()
+      else if (!g.tutorialResumedDone) sfx.questDone() // not for a skip
+    }
     else if (g.level > heard.level) sfx.levelUp()
     if (g.boosts.power > heard.boosts.power || g.boosts.wins > heard.boosts.wins) sfx.potion()
   }

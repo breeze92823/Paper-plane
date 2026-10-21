@@ -55,7 +55,8 @@ export const game = {
   // `progress`/`noProgress` reply arrives, or there is nothing to wait for (guest, no server,
   // timeout). The tutorial stays hidden until then, so a returning player never sees step 0 flash.
   progressKnown: false,
-  // The loaded save had already finished the tutorial, so its COMPLETE banner isn't replayed.
+  // The tutorial ended without being played to the end (the loaded save had already finished
+  // it, or the player skipped it), so its COMPLETE banner and fanfare aren't played.
   tutorialResumedDone: false,
 }
 game.level = levelForPower(game.power)
@@ -272,6 +273,11 @@ export function deletePet(id) {
 // Moves the tutorial on to `step`; never back.
 export function advanceTutorial(step) {
   if (step > game.tutorialStep) set({ tutorialStep: Math.min(TUTORIAL.doneStep, step) })
+}
+
+// The banner's SKIP: straight to done (saved like any other step), with no COMPLETE banner.
+export function skipTutorial() {
+  if (game.tutorialStep < TUTORIAL.doneStep) set({ tutorialStep: TUTORIAL.doneStep, tutorialResumedDone: true })
 }
 
 export function markProgressKnown() {
