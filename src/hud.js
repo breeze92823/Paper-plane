@@ -5,7 +5,7 @@
 // Progress (Power, Wins, Rebirths, level, Auto Throw) mirrors store.js.
 import { HUD } from './config.js'
 import { canAcceptRebirth, levelProgress, rebirthLevelsRequired, rebirthProgress } from './progression.js'
-import { acceptRebirth, buyAutoThrow, buyX2, game, powerMultiplier, setAutoThrow, setX2, subscribe } from './store.js'
+import { acceptRebirth, buyAutoThrow, buyX2, game, powerMultiplier, setAutoThrow, setX2, skipTutorial, subscribe } from './store.js'
 import { sfx } from './sfx.js'
 
 // Lengths in reference pixels, scaled with the window. Shared with eggUi.js.
@@ -62,6 +62,13 @@ const STYLE = `
 .hud .quest-warn{position:absolute;top:calc(100% + ${u(10)});left:50%;transform:translateX(-50%);
   font-size:${u(28)};color:#ff3b30;white-space:nowrap}
 .hud .quest-warn:empty{display:none}
+/* SKIP, off the banner's right end; above the REBIRTH NOW dim (hence the banner's z-index).
+   The first tap arms it (red SKIP?), a second within a few seconds skips. */
+.hud .quest{z-index:10}
+.hud .quest-skip{position:absolute;left:calc(100% + ${u(12)});top:50%;margin-top:${u(-24)};height:${u(48)};padding:0 ${u(14)};
+  box-sizing:border-box;border:${u(2.5)} solid #1c1c1c !important;border-radius:${u(8)};background:linear-gradient(#9aa3b5,#646d80);
+  font-size:${u(24)};white-space:nowrap;box-shadow:inset 0 ${u(-4)} 0 rgba(0,0,0,.15);${outline(2.5, '#1c1c1c')}}
+.hud .quest-skip.armed{background:linear-gradient(#ff5a4a,#d4111b)}
 .hud .quest.leaving{animation:quest-out .5s ease-in forwards}
 @keyframes quest-out{0%{opacity:1;transform:translateX(-50%) scale(1)}30%{opacity:1;transform:translateX(-50%) scale(1.15)}
   100%{opacity:0;transform:translateX(-50%) scale(.2)}}
@@ -186,6 +193,10 @@ html.compact .hud .stats{top:calc(${u(10)} + env(safe-area-inset-top));bottom:au
 html.compact .hud .menu{top:calc(${u(150)} + env(safe-area-inset-top));left:calc(${u(17)} + env(safe-area-inset-left));transform:none}
 html.compact .hud .side{top:calc(${u(24)} + 56px + env(safe-area-inset-top));right:calc(${u(18)} + env(safe-area-inset-right));transform:none;gap:${u(36)}}
 html.compact .hud .power{bottom:calc(${u(14)} + env(safe-area-inset-bottom))}
+/* SKIP tucks onto the banner's top-right corner: off its end it would run into the x2 boosts. */
+html.compact .hud .quest-skip{left:auto;right:${u(12)};top:${u(-26)};margin-top:0;height:${u(42)};font-size:${u(22)}}
+/* A fingertip-sized hit area around the small chip. */
+html.touch .hud .quest-skip::before{content:'';position:absolute;inset:-10px -6px}
 /* Touch has its own THROW button (touch.js), which pulses in the throw area instead. */
 html.touch .hud .throw{display:none}
 html.touch .hud :is(.ew-close,.pm-close){width:${u(66)};height:${u(66)};font-size:${u(34)}}
@@ -291,7 +302,7 @@ ${DEFS}
   <span class="state t" data-k="autoThrow"></span>
   ${cost('autoThrow', 'trophy')}
 </button>
-<div class="quest" hidden><div class="quest-tag t"></div><div class="quest-text t"></div><div class="quest-warn t"></div></div>
+<div class="quest" hidden><div class="quest-tag t"></div><div class="quest-text t"></div><div class="quest-warn t"></div><button class="quest-skip" data-act="skipTutorial" hidden>SKIP</button></div>
 <div class="tdim" hidden></div>
 <div class="flight" data-k="flight"></div>
 <div class="zonepop"><div class="name t"></div><div class="sub t"></div></div>
@@ -486,6 +497,13 @@ export function createHud(actions = {}) {
         showPopup(`🏆 ${formatNumber(HUD.prices[act])} Wins`, `needed: you have ${formatNumber(game.wins)}`, 'bad')
       }
     }
+    if (act === 'skipTutorial') {
+      if (!questSkip.classList.contains('armed')) armSkip(true)
+      else {
+        armSkip(false)
+        skipTutorial()
+      }
+    }
     if (act === 'rebirth') openRebirth(true)
     if (act === 'rebirthClose') openRebirth(false)
     if (act === 'rebirthConfirm' && acceptRebirth()) {
@@ -559,6 +577,14 @@ export function createHud(actions = {}) {
   const questTag = quest.querySelector('.quest-tag')
   const questText = quest.querySelector('.quest-text')
   const questWarn = quest.querySelector('.quest-warn')
+  const questSkip = quest.querySelector('.quest-skip')
+  let disarmTimer = 0
+  function armSkip(on) {
+    clearTimeout(disarmTimer)
+    questSkip.classList.toggle('armed', on)
+    questSkip.textContent = on ? 'SKIP?' : 'SKIP'
+    if (on) disarmTimer = setTimeout(() => armSkip(false), 3000)
+  }
   const dim = root.querySelector('.tdim')
   const menu = root.querySelector('.menu')
   const confirmBtn = rb.querySelector('.rb-go')
@@ -573,6 +599,7 @@ export function createHud(actions = {}) {
       questText.textContent = banner.text
       questWarn.textContent = banner.warn
       quest.classList.toggle('leaving', banner.leaving)
+      questSkip.hidden = banner.tag !== 'TUTORIAL'
     }
     dim.hidden = !spotlight
     menu.classList.toggle('spot', spotlight)
